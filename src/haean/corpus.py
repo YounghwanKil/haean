@@ -1,4 +1,4 @@
-"""Read-only source import. Archives are read, never executed or unpacked."""
+"""Read-only source import. Archives are read recursively; embedded instructions are never executed."""
 from __future__ import annotations
 
 import csv
@@ -20,6 +20,15 @@ import openpyxl
 
 def nfc(value: str) -> str:
     return unicodedata.normalize("NFC", value)
+
+
+def decode_text(data: bytes) -> str:
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp949")
 
 
 def digest(data: bytes) -> str:
@@ -108,7 +117,7 @@ class Corpus:
         self.db.execute("INSERT OR REPLACE INTO records VALUES (?,?,?,?,?,?,?)",
                         (rid, sha, locator, exam, role, nfc(text), json.dumps(meta or {}, ensure_ascii=False, default=str)))
 
-    def import_file(self, path: Path) -> dict:
+    def import_file(self, path: Path, refresh=False) -> dict:
         name = nfc(path.name)
         if "폰트모음" in name:
             with path.open("rb") as stream:
@@ -118,14 +127,18 @@ class Corpus:
             data = path.read_bytes()
             sha = digest(data)
         prior = self.db.execute("SELECT status FROM sources WHERE sha=?", (sha,)).fetchone()
-        if prior and prior[0] != "error":
+        if prior and prior[0] != "error" and not refresh:
             return {"name": name, "status": "duplicate", "sha": sha}
         exam = "psat7" if "PSAT_7" in name else "psat5" if "PSAT_5" in name else "leet"
         status, detail = "ok", ""
         self.db.execute("SAVEPOINT importing")
         try:
+            if refresh:
+                self.db.execute("DELETE FROM records WHERE sha=?", (sha,))
             if "폰트모음" in name:
-                status, detail = "asset_only", "Font archive inventoried; not installed or indexed"
+                from .source_audit import archive_inventory
+                members = archive_inventory(path)
+                status, detail = "asset_only", json.dumps({"members": len(members), "font_payloads": sum(m["status"] == "inventoried" for m in members), "installed": False})
             else:
                 self._extract(data, sha, name, exam)
                 if path.suffix.lower() in {".hwp", ".hwpx"}:
@@ -174,20 +187,42 @@ class Corpus:
             values.close()
             formulas.close()
         elif suffix == ".zip":
+            member_report = []
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 for info in archive.infolist():
                     member = archive_name(info)
-                    if info.is_dir() or "__MACOSX" in member or Path(member).name.startswith("."):
+                    parts = Path(member).parts
+                    result = {"member": member, "bytes": info.file_size}
+                    member_report.append(result)
+                    if info.is_dir() or "__MACOSX" in parts or any(p.startswith(".") for p in parts):
+                        result["status"] = "metadata_or_runtime_excluded"
+                        continue
+                    if Path(member).is_absolute() or ".." in parts or "\\" in member:
+                        result["status"] = "unsafe_path"
                         continue
                     if info.file_size > 20_000_000:
+                        result["status"] = "oversized_member"
                         continue
-                    if member.endswith(".md"):
-                        # Duplicate compiled SK document is redundant with individual documents.
-                        if "전체(단일파일)" in member:
-                            continue
+                    if "전체(단일파일)" in member:
+                        result["status"] = "compiled_duplicate"
+                        continue
+                    nested = name + "::" + member
+                    ext = Path(member).suffix.lower()
+                    if ext == ".md":
                         text = archive.read(info).decode("utf-8-sig")
                         role = "feedback" if "대조정리" in name else "wiki"
-                        self._chunks(sha, name + "::" + member, exam, role, text)
+                        self._chunks(sha, nested, exam, role, text)
+                    elif ext in {".txt", ".json", ".xlsx", ".hwp", ".hwpx"}:
+                        self._extract(archive.read(info), sha, nested, exam)
+                    else:
+                        result["status"] = "unsupported_format"
+                        continue
+                    result["status"] = "text_indexed_visual_unverified" if ext in {".hwp", ".hwpx"} else "indexed"
+            self.db.execute("CREATE TABLE IF NOT EXISTS archive_members(sha TEXT, member TEXT, detail TEXT, PRIMARY KEY(sha,member))")
+            self.db.execute("DELETE FROM archive_members WHERE sha=?", (sha,))
+            for result in member_report:
+                self.db.execute("INSERT OR REPLACE INTO archive_members VALUES (?,?,?)",
+                                (sha, result["member"], json.dumps(result, ensure_ascii=False)))
         elif suffix == ".hwp":
             self._chunks(sha, name, exam, "feedback" if "검토의견" in name else "document", hwp_text(data), {"visual_verified": False})
         elif suffix in {".hwpx", ".docx"}:
@@ -196,11 +231,14 @@ class Corpus:
                 for member in members:
                     self._chunks(sha, name + "::" + member, exam, "document", xml_text(z.read(member)), {"visual_verified": False})
         elif suffix == ".csv":
-            text = data.decode("utf-8-sig")
+            text = decode_text(data)
             for i, row in enumerate(csv.reader(io.StringIO(text)), 1):
                 self.add(sha, f"{name}#row{i}", "team", "conversation", " | ".join(row))
+        elif suffix == ".json":
+            value = json.loads(decode_text(data))
+            self._chunks(sha, name, exam, "reference", json.dumps(value, ensure_ascii=False, indent=2))
         elif suffix in {".md", ".txt"}:
-            self._chunks(sha, name, exam, "reference", data.decode("utf-8-sig"))
+            self._chunks(sha, name, exam, "reference", decode_text(data))
         else:
             raise ValueError(f"Unsupported source: {suffix}")
 

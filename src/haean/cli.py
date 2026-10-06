@@ -20,8 +20,24 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("import", help="원본을 읽기 전용으로 색인")
     p.add_argument("paths", nargs="+", type=Path)
+    p.add_argument("--refresh", action="store_true")
+    p = sub.add_parser("import-questions", help="화면 대조한 PDF 문항 전문 패킷 등록; 정답 검증과 별도")
+    p.add_argument("packet", type=Path)
     p = sub.add_parser("import-team", help="제공된 팀 자료 파일명에 한해 가져오기")
     p.add_argument("directory", type=Path)
+    p.add_argument("--refresh", action="store_true")
+    p = sub.add_parser("audit-sources", help="팀 자료·ZIP 전체 목록과 안전한 압축 해제")
+    p.add_argument("directory", type=Path)
+    p.add_argument("--out", type=Path, default=Path("data/source-audit"))
+    p = sub.add_parser("human-checkpoint", help="실제 사람 검토 기록 등록; 납품 승인이 아님")
+    p.add_argument("run", type=Path)
+    p.add_argument("--reviewer", required=True)
+    p.add_argument("--candidate-sha", required=True)
+    p.add_argument("--note", required=True)
+    for name in ("final-prepare", "final-review"):
+        p = sub.add_parser(name)
+        p.add_argument("run", type=Path)
+        if name == "final-review": p.add_argument("--model", default="gpt-6-astra")
     sub.add_parser("status")
     p = sub.add_parser("role", help="서브에이전트에 전달할 실제 역할 지침")
     p.add_argument("name")
@@ -35,6 +51,7 @@ def main():
     p.add_argument("--since", type=int, default=2024)
     p.add_argument("--until", type=int, default=2026)
     p.add_argument("--exclude-extra", action="store_true")
+    p.add_argument("--product", choices=["full", "bridge"], default="full")
     p.add_argument("--out", type=Path)
     for name in ["prepare", "generate"]:
         p = sub.add_parser(name)
@@ -70,6 +87,7 @@ def main():
     text_input.add_argument("--file", type=Path, help="UTF-8 텍스트 피드백 파일")
     p.add_argument("--reviewer", required=True)
     p.add_argument("--severity", choices=["A", "B", "C"], required=True)
+    p.add_argument("--origin", choices=["human", "model"], default="human")
     p = sub.add_parser("feedback-note", help="공통 텍스트 피드백을 개선 실험 입력으로 보관")
     p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"], required=True)
     p.add_argument("--subject")
@@ -82,6 +100,14 @@ def main():
     p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"])
     p.add_argument("--subject")
     p.add_argument("--limit", type=int, default=12)
+    p = sub.add_parser("exam-build", help="배정표로 모의고사 전체 출제·독립 검토")
+    p.add_argument("plan", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--workers", type=int, default=3)
+    p.add_argument("--max-revisions", type=int, default=2)
+    p.add_argument("--model", default="gpt-6-astra")
+    p = sub.add_parser("exam-assemble", help="작성 묶음을 회차 번호대로 모아 검토본 생성")
+    p.add_argument("folder", type=Path)
     p = sub.add_parser("evaluate", help="고정 과제에서 Astra 출제·검토·평가 실행")
     p.add_argument("--suite", type=Path, default=Path("evals/pilot.json"))
     p.add_argument("--out", type=Path, required=True)
@@ -101,6 +127,13 @@ def main():
     p.add_argument("--field", choices=["passage", "explanation", "commentary"], required=True)
     p = sub.add_parser("style-check")
     p.add_argument("folder", type=Path)
+    p = sub.add_parser("layout-fill", help="기존 HWP 양식에 문항 삽입; 원본 보존")
+    p.add_argument("runs", nargs="+", type=Path)
+    p.add_argument("--template", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--title", required=True)
+    p.add_argument("--start", type=int, default=1)
+    p.add_argument("--kind", choices=["questions", "solutions"], default="questions")
     p = sub.add_parser("layout-package")
     p.add_argument("run", type=Path)
     p.add_argument("--question-template", type=Path, required=True)
@@ -119,6 +152,22 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == 'import-questions':
+        from .question_sources import import_questions
+        return import_questions(Corpus(a.db), a.packet)
+    if a.command in {"exam-build", "exam-assemble"}:
+        from .full_exam import build, assemble
+        if a.command == "exam-assemble": return assemble(a.folder)
+        return build(a.plan, a.db, a.out, a.workers, a.max_revisions, a.model)
+    if a.command == "audit-sources":
+        from .source_audit import audit_sources
+        result = audit_sources(team_files(a.directory), a.out)
+        return {"inventory": str(a.out / "inventory.json"), "provided_paths": result["provided_paths"], "unique_sources": result["unique_sources"]}
+    if a.command in {"human-checkpoint", "final-prepare", "final-review"}:
+        from .final_review import human_checkpoint, prepare_final, final_review
+        if a.command == "human-checkpoint": return human_checkpoint(a.run, a.reviewer, a.candidate_sha, a.note)
+        if a.command == "final-prepare": return prepare_final(a.run)
+        return final_review(a.run, CodexProvider(a.model, trace_dir=a.run / "final-traces"))
     if a.command in {"feedback-note", "feedback-notes"}:
         from .feedback_notes import add_note, list_notes
         folder = Path(a.db).parent / "feedback"
@@ -128,6 +177,9 @@ def dispatch(a):
     if a.command == "role":
         from .roles import role_packet
         return role_packet(a.name)
+    if a.command == "layout-fill":
+        from .hwp import fill_template
+        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind)
     if a.command == "layout-package":
         from .layout import package
         return package(a.run, a.question_template, a.solution_template)
@@ -147,7 +199,8 @@ def dispatch(a):
         save(a.run / "blind-usage.json", provider.usage)
         return {"result": str(a.run / "blind-result.json")}
     if a.command == "export": return export_review(a.run)
-    if a.command == "feedback": return feedback(a.run, a.item, feedback_text(a), a.reviewer, a.severity)
+    if a.command == "feedback":
+        return feedback(a.run, a.item, feedback_text(a), a.reviewer, a.severity, getattr(a, "origin", "human"))
     if a.command in {"check", "review-result"}:
         context = json.loads((a.run / "context.json").read_text())
         brief = Brief.model_validate(context["brief"])
@@ -184,7 +237,7 @@ def dispatch(a):
     corpus = Corpus(a.db)
     if a.command in {"import", "import-team"}:
         paths = a.paths if a.command == "import" else team_files(a.directory)
-        results = [corpus.import_file(p) for p in paths]
+        results = [corpus.import_file(p, refresh=getattr(a, "refresh", False)) for p in paths]
         if a.command == "import-team":
             save(Path(a.db).parent / "import-report.json", results)
         return results
@@ -192,7 +245,7 @@ def dispatch(a):
     if a.command == "search":
         return [{k: r[k] for k in ("id", "exam", "role", "locator", "text")} for r in corpus.search(a.query, a.exam, a.limit)]
     if a.command == "plan":
-        result = blueprint(corpus, a.exam, a.subject, a.since, a.until, a.exclude_extra)
+        result = blueprint(corpus, a.exam, a.subject, a.since, a.until, a.exclude_extra, a.product)
         if a.out:
             a.out.parent.mkdir(parents=True, exist_ok=True)
             save(a.out, result)

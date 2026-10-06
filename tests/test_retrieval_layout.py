@@ -1,0 +1,59 @@
+import json
+from pathlib import Path
+import pytest
+from haean import hwp
+from haean.retrieval import source_item_id, retrieve
+from haean.models import Brief
+from haean.planning import blueprint
+
+
+def test_exam_scoped_source_identity():
+    meta = json.dumps({'fields': {'연도': 2025, '문항 번호': 3, '과목': '자료해석', '회차': '2025 추가'}})
+    assert source_item_id({'exam': 'leet', 'meta': meta}) == '2025_03'
+    assert source_item_id({'exam': 'psat5', 'meta': meta}) != source_item_id({'exam': 'psat7', 'meta': meta})
+
+
+def test_metadata_is_not_full_question_fewshot():
+    class Database:
+        def execute(self, *args): return []
+    class Corpus:
+        db = Database()
+        def rows(self, *args): return []
+        def search(self, query, exam, limit, roles):
+            if 'metadata' not in roles: return []
+            return [{'id': 'm1', 'locator': 'sheet:2', 'exam': exam, 'role': 'metadata',
+                     'sha': 'a'*64, 'score': 5, 'text': '통계', 'meta': json.dumps({'fields': {
+                         '연도': 2026, '문항 번호': 1, '과목': '자료해석', '문항유형': '비율'}})}]
+    refs, log = retrieve(Corpus(), Brief(exam='psat7', subject='자료해석', item_type='비율', topic='통계'))
+    assert not refs[0]['full_question']
+    assert log['full_few_shot_ids'] == []
+    assert log['design_metadata_ids'] == ['m1'] and log['missing']
+
+
+def test_bridge_reserves_one_unproduced_argument_slot():
+    class Corpus:
+        def rows(self, exam):
+            return [{'fields': {'연도': 2025, '과목': '추리논증', '지문': '본문',
+                     '내용영역': '규범', '문항유형': '논증 평가', '문항 번호': 1}, 'source_id': 's1'}]
+    result = blueprint(Corpus(), 'leet', '추리논증', product='bridge')
+    assert result['total'] == len(result['slots']) == 20
+    assert sum(result['allocation'].values()) == 19
+    assert result['slots'][-1]['state'] == 'reserved'
+
+
+def test_layout_refuses_mixed_exams_before_writing(tmp_path, draft, brief):
+    runs=[]
+    for index, b in enumerate([brief.model_dump(), Brief(exam='psat7', subject='자료해석', item_type='비율', topic='통계').model_dump()]):
+        run=tmp_path/str(index);run.mkdir();runs.append(run)
+        (run/'candidate.json').write_text(draft.model_dump_json())
+        (run/'brief.json').write_text(json.dumps(b))
+    with pytest.raises(ValueError, match='섞을 수'):
+        hwp.fill_template(runs,tmp_path/'template.hwp',tmp_path/'output.hwp','검토')
+    assert not (tmp_path/'output.hwp').exists()
+
+
+def test_layout_refuses_existing_output(tmp_path):
+    output=tmp_path/'existing.hwp';output.write_bytes(b'original')
+    with pytest.raises(ValueError, match='덮어쓰지'):
+        hwp.fill_template([],output,output,'검토')
+    assert output.read_bytes()==b'original'

@@ -31,6 +31,7 @@ CLI 런처는 `gpt-6-astra`를 선택합니다. 앱에서는 Astra를 직접 선
 | 총괄 | `$haean` | 요청을 과목별 작업으로 나누고 상태·자료·결과 관리 |
 | 전문 스킬 | `$haean-leet`, `$haean-psat` | 시험별 새 문항 설계·수정 |
 | 품질 | `$haean-review`, `$haean-style` | 정답 독립 풀이, 편집, im-not-ai 윤문 |
+| 양식 | `$haean-layout` | 기존 HWP 문제지·해설지에 내용 삽입과 시각 검증 |
 | 회차 | `$haean-exam` | 유형·난도·소재·공유 지문·정답 배치 |
 | 개선 | `$haean-evolve` | 원문 실행 기록을 읽어 고정 평가로 후보 비교 |
 | Codex 역할 | `.codex/agents/*.toml` | 조사·출제·풀이·편집·구성·개선 담당 |
@@ -43,14 +44,18 @@ CLI 런처는 `gpt-6-astra`를 선택합니다. 앱에서는 Astra를 직접 선
 ## 팀 자료
 
 ```bash
-./haean tools import-team ~/Downloads
+./haean tools audit-sources ~/Downloads
+./haean tools import-team ~/Downloads --refresh
 ./haean tools import '/path/to/additional-source.xlsx'
+./haean tools import-questions '/path/to/visually-checked-question-packet.json'
 ./haean tools status
 ```
 
 제공된 LEET 통합 엑셀·위키·수정 대조, PSAT 5급/7급 통계, 검토 의견과 HWP를 로컬 SQLite에 색인합니다. 동일 파일은 해시로 중복 제거합니다. 원본은 수정하지 않습니다. 팀원마다 허용된 원본을 별도로 가져와야 하며 원문은 GitHub에 올라가지 않습니다.
 
 PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 추출은 수식·도형·레이아웃 검증을 대신하지 않습니다. [자료 분석](docs/SOURCE_FINDINGS.md)을 참고하세요.
+
+`import-questions`는 PDF 해시·쪽·출처와 화면 대조 기록이 있는 전문 전사를 등록합니다. 표·보기·선지와 추가 배치 정보를 보존하며, 이 경로에서는 미확인 정답을 추정해 넣지 않습니다. 전사 확인과 정답 검증을 구분합니다.
 
 ## 출제·검토
 
@@ -129,7 +134,9 @@ flowchart LR
 
 ## 한글 양식
 
-문항 데이터와 실제 HWP/HWPX 템플릿을 `layout-package`로 묶는 전달 규격이 있습니다. 승규님의 Java 소스·JAR·CLI 인터페이스가 아직 제공되지 않아 **시대인재 양식 출력은 연결 전**입니다. [연동 계약](docs/LAYOUT.md)에 필요한 입력과 페이지 검증 기준을 정리했습니다. 현재 HTML 출력은 내용 검토용입니다.
+`./haean setup-layout`으로 한글 MCP와 Java 삽입 도구를 설치합니다. `$haean-layout`은 제공된 빈 HWP 마스터에 문항을 채우며 LEET·PSAT의 시험명과 과목 제목을 바꿉니다. 원본의 편집 틀을 재사용합니다. JDK 17 이상이 필요하며 API 설정은 없습니다.
+
+LEET·PSAT 자료해석 샘플의 한글 열기와 내용 배치를 확인했습니다. 전체 회차·해설지·인쇄 결과를 포함한 99% 재현을 인증한 상태는 아닙니다. [지원 마스터와 검증 범위](docs/LAYOUT.md)를 확인하세요.
 
 ## 검증
 

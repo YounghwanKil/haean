@@ -36,15 +36,18 @@ def arithmetic(expression: str) -> Fraction:
 def public_item(item):
     """Answer/design/reference-free payload for independent solving."""
     return {key: item.model_dump()[key] for key in
-            ("id", "stem", "passage", "statements", "tables", "options", "shared_passage_id")}
+            ("id", "stem", "passage", "statements", "tables", "options", "shared_passage_id", "figures")}
 
 
-def validate(draft: Draft, brief: Brief, allowed_sources: set[str]) -> list[str]:
+def validate(draft: Draft, brief: Brief, allowed_sources: set[str], item_specs=None) -> list[str]:
     errors = []
     if len(draft.items) != brief.count:
         errors.append("문항 수가 요청과 다릅니다")
     ids = [i.id for i in draft.items]
     if len(set(ids)) != len(ids): errors.append("문항 ID 중복")
+    specifications = {s['id']: s for s in item_specs or []}
+    if specifications and ids != [s['id'] for s in item_specs]:
+        errors.append('회차 배정 문항 ID·순서 불일치')
     if brief.shared_passage:
         if len({i.shared_passage_id for i in draft.items}) != 1 or any(not i.shared_passage_id for i in draft.items):
             errors.append("세트 공통지문 ID 불일치")
@@ -54,7 +57,9 @@ def validate(draft: Draft, brief: Brief, allowed_sources: set[str]) -> list[str]
         errors.append("단독 문항에 공유 지문 ID가 있습니다")
     for item in draft.items:
         prefix = item.id + ": "
-        if item.subject != brief.subject or item.item_type != brief.item_type:
+        if len({f.id for f in item.figures}) != len(item.figures): errors.append(prefix + '도식·그래프 ID 중복')
+        expected_type = specifications.get(item.id, {}).get('item_type', brief.item_type)
+        if item.subject != brief.subject or item.item_type != expected_type:
             errors.append(prefix + "시험 명세와 과목·유형 불일치")
         if not item.source_ids or set(item.source_ids) - allowed_sources:
             errors.append(prefix + "근거 자료 ID 누락 또는 미등록")

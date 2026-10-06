@@ -61,6 +61,11 @@ def doctor():
 def main():
     args = sys.argv[1:]
     if args == ["setup"]: return setup()
+    if args == ["setup-layout"]:
+        python = ROOT / ".venv/bin/python"
+        if not python.exists(): raise ValueError("먼저 ./haean setup 을 실행하세요")
+        subprocess.run([str(python), "-m", "pip", "install", "-e", ".[layout]"], cwd=ROOT, check=True)
+        return subprocess.run([sys.executable, str(ROOT / "scripts/setup_layout.py")], check=True).returncode
     if args == ["doctor"]: return doctor()
     if args and args[0] == "tools":
         return subprocess.run([str(ROOT / "scripts/haean-tool"), *args[1:]]).returncode

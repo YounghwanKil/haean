@@ -81,7 +81,8 @@ def test_mismatch_and_ambiguous_answer_block(draft):
 
 def test_revision_rechecks_and_never_auto_approves(tmp_path, draft, brief):
     save(tmp_path / "brief.json", brief.model_dump())
-    save(tmp_path / "context.json", {"references": [{"id": "source-1", "text": "다른 예시"}]})
+    save(tmp_path / "context.json", {"references": [{"id": "source-1", "text": "다른 예시"}],
+         "exam_contract":"개별 배정 난도 우선", "exam_assignment":[{"id":"TEST-001","item_type":"조건 추론"}]})
     class Provider:
         usage = []
         calls = []
@@ -90,7 +91,9 @@ def test_revision_rechecks_and_never_auto_approves(tmp_path, draft, brief):
             if stage in {"generate", "revise"}: return draft
             if stage == "blind":
                 assert "answer" not in payload["items"][0]
+                assert 'exam_contract' not in payload
                 return reviews(draft, self.calls.count("blind") > 1)[0]
+            assert payload['exam_contract']=='개별 배정 난도 우선'
             return reviews(draft)[1]
     p = Provider()
     run_pipeline(tmp_path, p)

@@ -56,6 +56,21 @@ def test_subscription_runtime_rejects_tool_contamination(monkeypatch, tmp_path):
         CodexProvider(trace_dir=tmp_path).call("blind", "solve", {}, Result)
 
 
+def test_timeout_preserves_input_partial_output_and_usage(monkeypatch, tmp_path):
+    import subprocess
+    monkeypatch.setattr('haean.codex_runtime.shutil.which',lambda _: '/codex')
+    def run(command, **kwargs):
+        if command[1]=='login':return SimpleNamespace(returncode=0,stdout='ChatGPT',stderr='')
+        raise subprocess.TimeoutExpired(command,1,output=b'partial trace',stderr=b'timeout detail')
+    monkeypatch.setattr('haean.codex_runtime.subprocess.run',run)
+    class Result(StrictModel):status:str
+    provider=CodexProvider(timeout=1,trace_dir=tmp_path)
+    with pytest.raises(subprocess.TimeoutExpired):provider.call('generate','instruction',{'question':'fixture'},Result)
+    assert (tmp_path/'01-generate.jsonl').read_text()=='partial trace'
+    assert json.loads((tmp_path/'01-generate.input.json').read_text())['payload']=={'question':'fixture'}
+    assert provider.usage[0]['timed_out'] and provider.usage[0]['usage'] is None
+
+
 def test_strict_output_schema():
     original = {"type":"object","properties":{"x":{"type":"string","default":"a"}}}
     strict = strict_schema(original)

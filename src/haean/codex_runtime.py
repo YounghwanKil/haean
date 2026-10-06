@@ -1,6 +1,7 @@
 """Fresh Codex CLI sessions using the existing ChatGPT subscription login."""
 from __future__ import annotations
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -41,6 +42,12 @@ class CodexProvider:
             schema_path, output = root / "schema.json", root / "result.json"
             schema_path.write_text(json.dumps(strict_schema(schema.model_json_schema()), ensure_ascii=False))
             task = instructions + "\n도구·파일 탐색·웹 검색·재위임을 하지 말고 아래 입력만으로 답하라. 최종 출력은 스키마 JSON이다.\n" + json.dumps(payload, ensure_ascii=False)
+            prefix = f"{self.calls:02}-{stage}"
+            if self.trace_dir:
+                (self.trace_dir / f"{prefix}.input.json").write_text(json.dumps({
+                    'instructions':instructions, 'payload':payload, 'model':self.model,
+                    'schema':json.loads(schema_path.read_text()),
+                    'task_sha256':hashlib.sha256(task.encode()).hexdigest()}, ensure_ascii=False))
             command = [self.binary, "exec", "--ephemeral", "--skip-git-repo-check", "--json",
                        "-C", str(root), "-s", "read-only", "-m", self.model,
                        "--output-schema", str(schema_path), "-o", str(output), "-"]
@@ -48,7 +55,16 @@ class CodexProvider:
             for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
                 env.pop(key, None)
             started = time.monotonic()
-            result = subprocess.run(command, input=task, text=True, capture_output=True, env=env, timeout=self.timeout)
+            try:
+                result = subprocess.run(command, input=task, text=True, capture_output=True, env=env, timeout=self.timeout)
+            except subprocess.TimeoutExpired as exc:
+                if self.trace_dir:
+                    for suffix, value in [('jsonl',exc.stdout),('stderr.txt',exc.stderr)]:
+                        value = value.decode('utf-8',errors='replace') if isinstance(value,bytes) else value or ''
+                        (self.trace_dir / f"{prefix}.{suffix}").write_text(value)
+                self.usage.append({'stage':stage,'model':self.model,'seconds':time.monotonic()-started,
+                                   'usage':None,'returncode':None,'timed_out':True})
+                raise
             if self.trace_dir:
                 (self.trace_dir / f"{self.calls:02}-{stage}.jsonl").write_text(result.stdout)
                 (self.trace_dir / f"{self.calls:02}-{stage}.stderr.txt").write_text(result.stderr)

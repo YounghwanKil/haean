@@ -2,3 +2,7 @@
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 3
+
+[mcp_servers.haean_hwp]
+command = "python3"
+args = ["scripts/hwp_mcp.py"]

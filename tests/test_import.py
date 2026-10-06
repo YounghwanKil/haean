@@ -35,7 +35,7 @@ def test_archive_cannot_write_or_execute(tmp_path):
     c = Corpus(tmp_path / "db")
     assert c.import_file(path)["status"] == "ok"
     assert not (tmp_path.parent / "escape.md").exists()
-    assert c.db.execute("select count(*) from records").fetchone()[0] == 1
+    assert c.db.execute("select count(*) from records").fetchone()[0] == 0
 
 
 def test_corrupt_import_rolls_back(tmp_path):

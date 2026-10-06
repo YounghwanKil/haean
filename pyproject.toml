@@ -11,6 +11,7 @@ dependencies = ["pydantic>=2.11,<3", "openpyxl>=3.1,<4", "olefile>=0.47,<1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "PyYAML>=6,<7"]
+layout = ["matplotlib>=3.9,<4", "fonttools>=4.28,<5", "Pillow>=10,<13"]
 
 [project.scripts]
 haean = "haean.cli:main"

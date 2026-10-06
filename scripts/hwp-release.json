@@ -1,0 +1,15 @@
+{
+  "version": "1.3.1",
+  "repository": "STAIxBWLB/hwp-cli",
+  "sha256": {
+    "aarch64-apple-darwin": "60da60c55050aa9d72e74c0fe6bfc9b4ead9e3732cfb794cf0355ef8331926e4",
+    "x86_64-apple-darwin": "be087994a1b2f2db0986a2c1571b296c026681b90184c55afcd6894a6e98f093",
+    "x86_64-unknown-linux-gnu": "21bd8ab3b6834c48fcebca390e3d3f79dcedd6a4388e4eeaf802501f84fcf433",
+    "aarch64-unknown-linux-gnu": "3c721f2548c4c74aba2ffb38fa09888d15610edaecc9fe33f81b1d7c42d222e4"
+  },
+  "hwplib": {
+    "version": "1.1.11",
+    "url": "https://repo.maven.apache.org/maven2/kr/dogfoot/hwplib/1.1.11/hwplib-1.1.11.jar",
+    "sha256": "fd464ff56eec7f58d463f7533da7501d4bb8261a225c20b7b19bed9e137f7e04"
+  }
+}

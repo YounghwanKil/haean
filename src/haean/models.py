@@ -55,6 +55,47 @@ class Table(StrictModel):
     note: str
 
 
+class FigureNode(StrictModel):
+    id: str
+    label: str
+
+
+class FigureEdge(StrictModel):
+    sources: list[str] = Field(min_length=1)
+    target: str
+    relation: Literal['support', 'attack']
+
+
+class FigureSeries(StrictModel):
+    name: str
+    values: list[float]
+
+
+class Figure(StrictModel):
+    id: str
+    placement: Literal['passage', 'option_1', 'option_2', 'option_3', 'option_4', 'option_5']
+    kind: Literal['argument', 'bar', 'line']
+    title: str
+    x_label: str
+    y_label: str
+    categories: list[str]
+    series: list[FigureSeries]
+    nodes: list[FigureNode]
+    edges: list[FigureEdge]
+    note: str
+
+    @model_validator(mode='after')
+    def structure(self):
+        if self.kind == 'argument':
+            ids = {n.id for n in self.nodes}
+            if not ids or len(ids) != len(self.nodes): raise ValueError('도식 노드 ID 누락·중복')
+            if any(e.target not in ids or not set(e.sources) <= ids or e.target in e.sources for e in self.edges):
+                raise ValueError('도식 연결의 노드 참조 오류')
+        elif not self.categories or not self.series or any(len(s.values) != len(self.categories) for s in self.series):
+            raise ValueError('그래프 범주와 계열 길이 불일치')
+        return self
+
+
 class Item(StrictModel):
     id: str
     subject: str
@@ -78,6 +119,7 @@ class Item(StrictModel):
     source_ids: list[str]
     calculations: list[Calculation]
     shared_passage_id: str | None
+    figures: list[Figure] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def options_unique(self):
