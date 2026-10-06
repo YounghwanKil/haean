@@ -1,0 +1,4 @@
+interface:
+  display_name: "haean-evolve"
+  short_description: "해안 전용 LEET·PSAT 출제와 검토 작업을 수행합니다"
+  default_prompt: "$haean-evolve 작업을 진행해줘."

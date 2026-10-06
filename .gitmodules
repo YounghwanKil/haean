@@ -1,0 +1,3 @@
+[submodule "vendor/im-not-ai"]
+	path = vendor/im-not-ai
+	url = https://github.com/epoko77-ai/im-not-ai.git

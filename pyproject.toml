@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "haean"
-version = "0.1.0"
+version = "0.2.0"
 description = "Source-grounded LEET and PSAT authoring and review harness"
 requires-python = ">=3.11"
-dependencies = ["openai>=2,<4", "pydantic>=2.11,<3", "openpyxl>=3.1,<4", "olefile>=0.47,<1"]
+dependencies = ["pydantic>=2.11,<3", "openpyxl>=3.1,<4", "olefile>=0.47,<1"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
+dev = ["pytest>=8,<10", "PyYAML>=6,<7"]
 
 [project.scripts]
 haean = "haean.cli:main"

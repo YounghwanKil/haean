@@ -1,0 +1,303 @@
+{
+  "date": "2026-10-07",
+  "model": "gpt-6-astra",
+  "codex_version": "codex-cli 0.160.1",
+  "mode": "codex-prompt-pipeline",
+  "repeats": 1,
+  "max_revisions": 1,
+  "humanizer": "not_applied",
+  "expert_verified": false,
+  "candidate_auto_promoted": false,
+  "suite_sha256": "3666feaae4499ead04645f1298fbf37dd30f0b386c16f9635c905498b8521cda",
+  "rows": [
+    {
+      "variant": "baseline",
+      "case_id": "leet-norm",
+      "exam": "leet",
+      "subject": "추리논증",
+      "quality": 2.75,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 3.0,
+        "reasoning_value": 2.0,
+        "distractors": 2.0,
+        "language": 3.0,
+        "explanation": 3.0,
+        "originality": 2.0,
+        "workload": 3.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 0,
+        "C": 3
+      },
+      "revisions": 0,
+      "calls": 4,
+      "seconds": 290.92,
+      "input_tokens": 137052,
+      "output_tokens": 7203
+    },
+    {
+      "variant": "baseline",
+      "case_id": "psat7-data",
+      "exam": "psat7",
+      "subject": "자료해석",
+      "quality": 2.75,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 3.0,
+        "reasoning_value": 2.0,
+        "distractors": 2.0,
+        "language": 3.0,
+        "explanation": 3.0,
+        "originality": 2.0,
+        "workload": 3.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 0,
+        "C": 2
+      },
+      "revisions": 0,
+      "calls": 4,
+      "seconds": 249.27,
+      "input_tokens": 116808,
+      "output_tokens": 8157
+    },
+    {
+      "variant": "candidate",
+      "case_id": "leet-norm",
+      "exam": "leet",
+      "subject": "추리논증",
+      "quality": 3.0,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 3.0,
+        "reasoning_value": 3.0,
+        "distractors": 2.0,
+        "language": 3.0,
+        "explanation": 4.0,
+        "originality": 2.0,
+        "workload": 3.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 1,
+        "B": 0,
+        "C": 2
+      },
+      "revisions": 1,
+      "calls": 7,
+      "seconds": 515.24,
+      "input_tokens": 262080,
+      "output_tokens": 14048
+    },
+    {
+      "variant": "candidate",
+      "case_id": "psat7-data",
+      "exam": "psat7",
+      "subject": "자료해석",
+      "quality": 3.25,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 3.0,
+        "reasoning_value": 3.0,
+        "distractors": 3.0,
+        "language": 4.0,
+        "explanation": 4.0,
+        "originality": 2.0,
+        "workload": 3.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 0,
+        "C": 0
+      },
+      "revisions": 0,
+      "calls": 4,
+      "seconds": 267.25,
+      "input_tokens": 116931,
+      "output_tokens": 7938
+    },
+    {
+      "variant": "candidate",
+      "case_id": "psat5-verbal",
+      "exam": "psat5",
+      "subject": "언어논리",
+      "quality": 3.375,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 4.0,
+        "reasoning_value": 3.0,
+        "distractors": 3.0,
+        "language": 3.0,
+        "explanation": 4.0,
+        "originality": 2.0,
+        "workload": 4.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 0,
+        "C": 2
+      },
+      "revisions": 0,
+      "calls": 4,
+      "seconds": 346.82,
+      "input_tokens": 112807,
+      "output_tokens": 8818
+    },
+    {
+      "variant": "candidate",
+      "case_id": "psat5-data",
+      "exam": "psat5",
+      "subject": "자료해석",
+      "quality": 3.25,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 4.0,
+        "reasoning_value": 3.0,
+        "distractors": 2.0,
+        "language": 3.0,
+        "explanation": 4.0,
+        "originality": 2.0,
+        "workload": 4.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 1,
+        "C": 1
+      },
+      "revisions": 1,
+      "calls": 7,
+      "seconds": 488.32,
+      "input_tokens": 221904,
+      "output_tokens": 16900
+    },
+    {
+      "variant": "candidate",
+      "case_id": "psat5-situation",
+      "exam": "psat5",
+      "subject": "상황판단",
+      "quality": 3.375,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 4.0,
+        "reasoning_value": 3.0,
+        "distractors": 3.0,
+        "language": 4.0,
+        "explanation": 4.0,
+        "originality": 2.0,
+        "workload": 3.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 0,
+        "C": 0
+      },
+      "revisions": 0,
+      "calls": 4,
+      "seconds": 295.49,
+      "input_tokens": 113190,
+      "output_tokens": 8274
+    },
+    {
+      "variant": "candidate",
+      "case_id": "psat7-verbal",
+      "exam": "psat7",
+      "subject": "언어논리",
+      "quality": 3.0,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 3.0,
+        "reasoning_value": 2.0,
+        "distractors": 3.0,
+        "language": 3.0,
+        "explanation": 4.0,
+        "originality": 2.0,
+        "workload": 3.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 0,
+        "B": 0,
+        "C": 2
+      },
+      "revisions": 0,
+      "calls": 4,
+      "seconds": 213.89,
+      "input_tokens": 112722,
+      "output_tokens": 5588
+    },
+    {
+      "variant": "candidate",
+      "case_id": "psat7-situation",
+      "exam": "psat7",
+      "subject": "상황판단",
+      "quality": 3.25,
+      "dimensions": {
+        "validity": 4.0,
+        "exam_fit": 3.0,
+        "reasoning_value": 3.0,
+        "distractors": 3.0,
+        "language": 4.0,
+        "explanation": 3.0,
+        "originality": 2.0,
+        "workload": 4.0
+      },
+      "eligible": true,
+      "final_errors": [],
+      "initial_issues": {
+        "A": 1,
+        "B": 0,
+        "C": 1
+      },
+      "revisions": 1,
+      "calls": 7,
+      "seconds": 422.07,
+      "input_tokens": 209715,
+      "output_tokens": 11623
+    }
+  ],
+  "comparison": {
+    "decision": "candidate_signal",
+    "pairs": [
+      {
+        "case_id": "leet-norm",
+        "repeat": 0,
+        "quality_delta": 0.25,
+        "baseline_eligible": true,
+        "candidate_eligible": true,
+        "regression": false
+      },
+      {
+        "case_id": "psat7-data",
+        "repeat": 0,
+        "quality_delta": 0.5,
+        "baseline_eligible": true,
+        "candidate_eligible": true,
+        "regression": false
+      }
+    ],
+    "stratum_mean_delta": {
+      "leet/추리논증": 0.25,
+      "psat7/자료해석": 0.5
+    },
+    "auto_promoted": false,
+    "expert_verified": false,
+    "note": "짝지은 모델 평가 신호. 전문가 교정·봉인 평가·충분한 반복 전 성능 향상 확정 아님."
+  }
+}

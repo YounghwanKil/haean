@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
@@ -48,7 +47,7 @@ def prepare(corpus: Corpus, brief: Brief, root="runs") -> Path:
     save(run / "context.json", packet)
     save(run / "draft.schema.json", Draft.model_json_schema())
     save(run / "provenance.json", {"prompt_sha256": hashlib.sha256(system.encode()).hexdigest(),
-                                    "source_ids": [r["id"] for r in refs], "version": "0.1.0"})
+                                    "source_ids": [r["id"] for r in refs], "version": "0.2.0"})
     (run / "request.md").write_text(system + "\n\n입력 자료(JSON):\n" + json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
     save(run / "status.json", {"state": "prepared", "human_approved": False})
     return run
@@ -60,32 +59,6 @@ def recent_feedback(root, exam, subject):
     rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     return [r for r in rows if r["exam"] == exam and r["subject"] == subject][-12:]
 
-
-class OpenAIProvider:
-    def __init__(self, model=None, review_model=None, max_calls=12):
-        from openai import OpenAI
-        self.model = model or os.getenv("HAEAN_MODEL")
-        self.review_model = review_model or os.getenv("HAEAN_REVIEW_MODEL") or self.model
-        if not os.getenv("OPENAI_API_KEY") or not self.model:
-            raise ValueError("OPENAI_API_KEY와 HAEAN_MODEL을 설정하세요. 키 없이 prepare로 출제 요청을 만들 수 있습니다.")
-        self.client = OpenAI(timeout=180, max_retries=2)
-        self.max_calls, self.calls, self.usage = max_calls, 0, []
-
-    def call(self, stage, instructions, payload, schema):
-        if self.calls >= self.max_calls:
-            raise RuntimeError("모델 호출 한도에 도달했습니다")
-        self.calls += 1
-        model = self.review_model if stage in {"blind", "editor"} else self.model
-        response = self.client.responses.parse(
-            model=model, instructions=instructions,
-            input=json.dumps(payload, ensure_ascii=False), text_format=schema,
-            max_output_tokens=16000, store=False,
-        )
-        self.usage.append({"stage": stage, "model": model, "response_id": response.id,
-                           "usage": response.usage.model_dump() if response.usage else None})
-        if response.output_parsed is None or response.status != "completed":
-            raise RuntimeError(f"{stage}: 모델 응답이 완성되지 않았거나 거절됐습니다 ({response.status})")
-        return response.output_parsed
 
 
 def run_pipeline(run: Path, provider, max_revisions=2):

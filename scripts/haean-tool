@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+HAEAN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ ! -x "$HAEAN_ROOT/.venv/bin/python" ]; then
+  echo '먼저 ./haean setup을 실행하세요.' >&2
+  exit 2
+fi
+cd "$HAEAN_ROOT"
+exec "$HAEAN_ROOT/.venv/bin/python" -m haean.cli "$@"

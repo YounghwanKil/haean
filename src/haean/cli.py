@@ -8,7 +8,8 @@ import sys
 from .corpus import Corpus, nfc
 from .models import Brief, Draft, BlindReview, EditorialReview
 from .planning import blueprint
-from .pipeline import OpenAIProvider, prepare, run_pipeline, save, feedback, prompt
+from .pipeline import prepare, run_pipeline, save, feedback, prompt
+from .codex_runtime import CodexProvider
 from .validation import validate, public_item, review_gate, similarity
 from .export import export_review
 
@@ -22,6 +23,8 @@ def main():
     p = sub.add_parser("import-team", help="제공된 팀 자료 파일명에 한해 가져오기")
     p.add_argument("directory", type=Path)
     sub.add_parser("status")
+    p = sub.add_parser("role", help="서브에이전트에 전달할 실제 역할 지침")
+    p.add_argument("name")
     p = sub.add_parser("search")
     p.add_argument("query")
     p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"])
@@ -44,8 +47,7 @@ def main():
         p.add_argument("--set", dest="shared_passage", action="store_true")
         p.add_argument("--runs", default="runs")
         if name == "generate":
-            p.add_argument("--model")
-            p.add_argument("--review-model")
+            p.add_argument("--model", default="gpt-6-astra")
             p.add_argument("--max-revisions", type=int, default=2)
     p = sub.add_parser("check", help="수동 작성본 검증 및 독립 검토 패킷 생성")
     p.add_argument("run", type=Path)
@@ -55,14 +57,54 @@ def main():
     p.add_argument("blind", type=Path)
     p.add_argument("editorial", type=Path)
     p.add_argument("--candidate-sha", required=True, help="검토자가 읽은 candidate.json의 SHA-256")
+    p = sub.add_parser("blind", help="ChatGPT 로그인으로 별도 Codex 세션에서 독립 풀이")
+    p.add_argument("run", type=Path)
+    p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("export")
     p.add_argument("run", type=Path)
     p = sub.add_parser("feedback")
     p.add_argument("run", type=Path)
     p.add_argument("--item", required=True)
-    p.add_argument("--text", required=True)
+    text_input = p.add_mutually_exclusive_group(required=True)
+    text_input.add_argument("--text")
+    text_input.add_argument("--file", type=Path, help="UTF-8 텍스트 피드백 파일")
     p.add_argument("--reviewer", required=True)
     p.add_argument("--severity", choices=["A", "B", "C"], required=True)
+    p = sub.add_parser("feedback-note", help="공통 텍스트 피드백을 개선 실험 입력으로 보관")
+    p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"], required=True)
+    p.add_argument("--subject")
+    p.add_argument("--reviewer", required=True)
+    p.add_argument("--origin", choices=["human", "model"], default="human")
+    text_input = p.add_mutually_exclusive_group(required=True)
+    text_input.add_argument("--text")
+    text_input.add_argument("--file", type=Path, help="UTF-8 텍스트 피드백 파일")
+    p = sub.add_parser("feedback-notes", help="시험·과목에 맞는 원문 피드백 조회")
+    p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"])
+    p.add_argument("--subject")
+    p.add_argument("--limit", type=int, default=12)
+    p = sub.add_parser("evaluate", help="고정 과제에서 Astra 출제·검토·평가 실행")
+    p.add_argument("--suite", type=Path, default=Path("evals/pilot.json"))
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--cases", nargs="+")
+    p.add_argument("--repeats", type=int, default=1)
+    p.add_argument("--max-revisions", type=int, default=1)
+    p.add_argument("--model", default="gpt-6-astra")
+    p = sub.add_parser("compare")
+    p.add_argument("baseline", type=Path)
+    p.add_argument("candidate", type=Path)
+    p = sub.add_parser("experiment")
+    p.add_argument("name")
+    p.add_argument("--baseline", type=Path, required=True)
+    p = sub.add_parser("style-prepare")
+    p.add_argument("run", type=Path)
+    p.add_argument("--item", required=True)
+    p.add_argument("--field", choices=["passage", "explanation", "commentary"], required=True)
+    p = sub.add_parser("style-check")
+    p.add_argument("folder", type=Path)
+    p = sub.add_parser("layout-package")
+    p.add_argument("run", type=Path)
+    p.add_argument("--question-template", type=Path, required=True)
+    p.add_argument("--solution-template", type=Path, required=True)
     args = parser.parse_args()
     try:
         result = dispatch(args)
@@ -72,9 +114,40 @@ def main():
         raise SystemExit(2)
 
 
+def feedback_text(a):
+    return a.file.read_text(encoding="utf-8-sig") if a.file else a.text
+
+
 def dispatch(a):
+    if a.command in {"feedback-note", "feedback-notes"}:
+        from .feedback_notes import add_note, list_notes
+        folder = Path(a.db).parent / "feedback"
+        if a.command == "feedback-note":
+            return add_note(folder, feedback_text(a), a.exam, a.subject, a.reviewer, a.origin)
+        return list_notes(folder, a.exam, a.subject, a.limit)
+    if a.command == "role":
+        from .roles import role_packet
+        return role_packet(a.name)
+    if a.command == "layout-package":
+        from .layout import package
+        return package(a.run, a.question_template, a.solution_template)
+    if a.command in {"style-prepare", "style-check"}:
+        from .style import style_prepare, style_check
+        return style_prepare(a.run, a.item, a.field) if a.command == "style-prepare" else style_check(a.folder)
+    if a.command in {"evaluate", "compare", "experiment"}:
+        from .evaluation import evaluate_suite, compare, experiment
+        if a.command == "compare": return compare(json.loads(a.baseline.read_text()), json.loads(a.candidate.read_text()))
+        if a.command == "experiment": return experiment(a.name, a.baseline)
+        return evaluate_suite(Corpus(a.db), a.suite, a.out, a.cases, a.repeats, a.max_revisions, a.model)
+    if a.command == "blind":
+        payload = json.loads((a.run / "blind-input.json").read_text())
+        provider = CodexProvider(a.model, trace_dir=a.run / "codex-traces")
+        result = provider.call("blind", prompt("blind"), payload, BlindReview)
+        save(a.run / "blind-result.json", result.model_dump())
+        save(a.run / "blind-usage.json", provider.usage)
+        return {"result": str(a.run / "blind-result.json")}
     if a.command == "export": return export_review(a.run)
-    if a.command == "feedback": return feedback(a.run, a.item, a.text, a.reviewer, a.severity)
+    if a.command == "feedback": return feedback(a.run, a.item, feedback_text(a), a.reviewer, a.severity)
     if a.command in {"check", "review-result"}:
         context = json.loads((a.run / "context.json").read_text())
         brief = Brief.model_validate(context["brief"])
@@ -125,8 +198,8 @@ def dispatch(a):
             save(a.out, result)
         return result
     brief = Brief(**{k: getattr(a, k) for k in Brief.model_fields})
-    provider = OpenAIProvider(a.model, a.review_model) if a.command == "generate" else None
     run = prepare(corpus, brief, a.runs)
+    provider = CodexProvider(a.model, trace_dir=run / "codex-traces") if a.command == "generate" else None
     if provider:
         run_pipeline(run, provider, a.max_revisions)
         export_review(run)

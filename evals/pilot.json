@@ -1,0 +1,14 @@
+{
+  "version": "pilot-v1",
+  "split": "pilot",
+  "expert_calibrated": false,
+  "cases": [
+    {"id":"leet-norm","group":"leet-norm-new","brief":{"exam":"leet","subject":"추리논증","item_type":"논증 평가 및 문제 해결","topic":"공공 전자기록의 보존과 열람 권한","difficulty":"중","count":1,"shared_passage":false}},
+    {"id":"psat5-verbal","group":"psat5-verbal-new","brief":{"exam":"psat5","subject":"언어논리","item_type":"강화·약화·평가","topic":"도시 소음 저감 정책의 효과 비교","difficulty":"중","count":1,"shared_passage":false}},
+    {"id":"psat5-data","group":"psat5-data-new","brief":{"exam":"psat5","subject":"자료해석","item_type":"자료 판단(보기)","topic":"가상 광역권 교통수단별 이용 통계","difficulty":"중","count":1,"shared_passage":false}},
+    {"id":"psat5-situation","group":"psat5-situation-new","brief":{"exam":"psat5","subject":"상황판단","item_type":"법조문 적용·사례","topic":"가상 공공시설 예약 취소와 기간 계산","difficulty":"중","count":1,"shared_passage":false}},
+    {"id":"psat7-verbal","group":"psat7-verbal-new","brief":{"exam":"psat7","subject":"언어논리","item_type":"내용 일치·부합","topic":"지역 기록관의 분류 방식","difficulty":"중","count":1,"shared_passage":false}},
+    {"id":"psat7-data","group":"psat7-data-new","brief":{"exam":"psat7","subject":"자료해석","item_type":"자료 판단(보기)","topic":"가상 공공도서관의 이용자와 대출 통계","difficulty":"중","count":1,"shared_passage":false}},
+    {"id":"psat7-situation","group":"psat7-situation-new","brief":{"exam":"psat7","subject":"상황판단","item_type":"규칙 적용 판단","topic":"가상 민원 창구의 배정 규칙","difficulty":"중","count":1,"shared_passage":false}}
+  ]
+}
