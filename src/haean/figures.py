@@ -79,6 +79,7 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
     numeric_option=option and figure.kind!='argument'
     size=(5.2,2.4) if numeric_option else (2.6,2.6) if option else (5.2,3.6)
     fig, ax = plt.subplots(figsize=size, constrained_layout=True)
+    title_pad = 6
     if figure.kind == 'argument':
         from .argument_layout import layout, draw
         argument_positions(figure)  # Refuse cycles before requesting a layout.
@@ -103,14 +104,18 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
         ax.tick_params(labelsize=12 if numeric_option else 10)
         if numeric_option:
             ax.legend(fontsize=11,loc='lower center',bbox_to_anchor=(.5,1.02),ncol=min(3,len(figure.series)),frameon=False)
-        else: ax.legend(fontsize=9,loc='upper right')
+        else:
+            columns = min(3, len(figure.series))
+            ax.legend(fontsize=9, loc='lower center', bbox_to_anchor=(.5, 1.02),
+                      ncol=columns, frameon=False)
+            title_pad = 19 + 15 * ((len(figure.series) + columns - 1) // columns)
         ax.spines[['top','right']].set_visible(False)
         geometry=geometry or chart_geometry([figure])
         if geometry['y_ticks']: ax.set_yticks(geometry['y_ticks'])
         ax.set_ylim(geometry['y_min'],geometry['y_max'])
     if figure.title and show_title:
         import textwrap
-        ax.set_title('\n'.join(textwrap.wrap(figure.title, 14 if option else 30)), fontsize=11)
+        ax.set_title('\n'.join(textwrap.wrap(figure.title, 14 if option else 30)), fontsize=11, pad=title_pad)
     if figure.note and figure.kind != 'argument':
         import textwrap
         fig.supxlabel('\n'.join(textwrap.wrap(figure.note, 58)), fontsize=8)
