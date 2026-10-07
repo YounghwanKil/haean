@@ -105,6 +105,23 @@ def test_numeric_labels_are_opt_in_and_preserve_close_values(tmp_path):
     assert '<!-- 120.8 -->' not in plain.with_suffix('.svg').read_text()
 
 
+def test_line_value_labels_avoid_crossing_series_without_changing_data(tmp_path):
+    pytest.importorskip('matplotlib')
+    from haean.figures import render
+    figure = chart([10, 22, 16, 12], categories=['A', 'B', 'C', 'D'],
+        series=[{'name': 'first', 'values': [10, 22, 16, 12]},
+                {'name': 'second', 'values': [7, 15, 18, 14]}],
+        show_values=True, y_min=0, y_max=25)
+    out = render(figure, tmp_path / 'crossing.png')
+    receipt = json.loads(out.with_suffix('.json').read_text())
+    assert receipt['figure'] == figure.model_dump()
+    labels = receipt['value_label_layout']
+    assert len(labels) == 8
+    assert all(not x['outside_axes'] and not x['geometry_conflicts'] for x in labels)
+    assert any(x['offset_points'][1] < 0 for x in labels)
+    assert receipt['visual_verified'] is False
+
+
 def test_editor_layout_memos_never_reach_blind_or_student_html(draft,tmp_path):
     from haean.validation import public_item
     from haean.export import export_review
