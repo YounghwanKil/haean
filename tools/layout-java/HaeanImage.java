@@ -15,6 +15,10 @@ import javax.imageio.ImageIO;
 /** Inline PNG rectangle using hwplib's documented image-fill API. */
 public class HaeanImage {
     static Paragraph paragraph(HWPFile file,Path path,int style) throws Exception {
+        return paragraph(file,path,style,28000);
+    }
+    static Paragraph paragraph(HWPFile file,Path path,int style,int width) throws Exception {
+        if(width<1000)throw new IllegalArgumentException("Image body cell is too narrow");
         var image=ImageIO.read(path.toFile());if(image==null)throw new IllegalArgumentException("Invalid PNG");
         int stream=1;for(var data:file.getDocInfo().getBinDataList())stream=Math.max(stream,data.getBinDataID()+1);
         file.getBinData().addNewEmbeddedBinaryData(String.format("Bin%04X.png",stream),Files.readAllBytes(path),BinDataCompress.ByStorageDefault);
@@ -26,7 +30,7 @@ public class HaeanImage {
         p.getText().getCharList().clear();p.getText().addExtendCharForGSO();p.getText().addString("");
         p.getHeader().setCharacterCount(p.getText().getCharSize());p.getHeader().getControlMask().setHasGsoTable(true);
         ControlRectangle rectangle=(ControlRectangle)p.addNewGsoControl(GsoControlType.Rectangle);
-        int width=28000,height=(int)Math.round(width*(double)image.getHeight()/image.getWidth());
+        int height=(int)Math.round(width*(double)image.getHeight()/image.getWidth());
         var header=rectangle.getHeader();var prop=header.getProperty();
         prop.setLikeWord(true);prop.setApplyLineSpace(true);prop.setVertRelTo(VertRelTo.Para);
         prop.setHorzRelTo(HorzRelTo.Para);prop.setVertRelativeArrange(RelativeArrange.TopOrLeft);

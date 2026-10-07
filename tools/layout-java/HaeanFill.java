@@ -29,16 +29,20 @@ public class HaeanFill {
         }
         return result;
     }
+    static Cell bodyCell(ControlTable table) {
+        Cell cell=null;
+        for(Row row:table.getRowList())for(Cell candidate:row.getCellList())
+            if(candidate.getListHeader().getColSpan()==table.getTable().getColumnCount()) cell=candidate;
+        if(cell==null)throw new IllegalStateException("Expected full-width body cell in box");
+        return cell;
+    }
     static void fillBox(HWPFile file, Paragraph p, String value, int style) throws Exception {
         ControlTable table=(ControlTable)p.getControlList().get(0);
         table.getTable().getProperty().setDivideAtPageBoundary(DivideAtPageBoundary.Divide);
         table.getHeader().getProperty().setLikeWord(false);
         table.getHeader().setPreventPageDivide(false);
         table.getHeader().setOutterMarginBottom(600);
-        Cell cell=null;
-        for(Row row:table.getRowList())for(Cell candidate:row.getCellList())
-            if(candidate.getListHeader().getColSpan()==table.getTable().getColumnCount()) cell=candidate;
-        if(cell==null)throw new IllegalStateException("Expected full-width body cell in box");
+        Cell cell=bodyCell(table);
         cell.getParagraphList().deleteAllParagraphs();
         for(String line:value.split("\n",-1)) {
             if(line.isBlank())continue; // Paragraph boundaries remain; duplicated blank lines are not extra HWP paragraphs.
@@ -170,15 +174,25 @@ public class HaeanFill {
             for(int n=2;n<boxes.size();n++)remove.add(boxes.get(n));
             if(boxes.size()<2)throw new IllegalStateException("Slot requires passage and statement boxes");
             if(f[0].equals("I")) {
-                Paragraph picture=HaeanImage.paragraph(file,Path.of(value),style);
-                if(f[4].equals("passage")) {
-                    if(remove.contains(boxes.get(0))) {
+                int pictureWidth=28000;
+                if(f[4].equals("passage") || f[4].equals("statements")) {
+                    int index=f[4].equals("statements")?1:0;
+                    if(!remove.contains(boxes.get(index))) {
+                        var header=bodyCell((ControlTable)boxes.get(index).getControlList().get(0)).getListHeader();
+                        pictureWidth=(int)Math.min(pictureWidth,header.getWidth()-header.getLeftMargin()-header.getRightMargin());
+                    }
+                }
+                Paragraph picture=HaeanImage.paragraph(file,Path.of(value),style,pictureWidth);
+                if(f[4].equals("passage") || f[4].equals("statements")) {
+                    int boxIndex=f[4].equals("statements")?1:0;
+                    if(boxIndex==1 && remove.contains(boxes.get(1)))throw new IllegalStateException("Statement figure requires a statement box");
+                    if(remove.contains(boxes.get(boxIndex))) {
                         // A second shared item keeps its own figures after its stem, not in the removed common box.
                         insertAfter.computeIfAbsent(s.getParagraph(start),k->new ArrayList<>()).add(picture);
                         continue;
                     }
-                    ControlTable outer=(ControlTable)boxes.get(0).getControlList().get(0);
-                    Cell parent=outer.getRowList().get(0).getCellList().get(0);
+                    ControlTable outer=(ControlTable)boxes.get(boxIndex).getControlList().get(0);
+                    Cell parent=bodyCell(outer);
                     parent.getParagraphList().getParagraph(parent.getParagraphList().getParagraphCount()-1).getHeader().setLastInList(false);
                     picture.getHeader().setLastInList(true);parent.getParagraphList().addParagraph(picture);
                     parent.getListHeader().setParaCount(parent.getParagraphList().getParagraphCount());
@@ -199,7 +213,7 @@ public class HaeanFill {
             else if(f[0].equals("X")) {
                 remove.add(boxes.get(0));
                 s.getParagraph(start).getHeader().getDivideSort().setDividePage(false);
-                s.getParagraph(start).getHeader().getDivideSort().setDivideColumn(false);
+                s.getParagraph(start).getHeader().getDivideSort().setDivideColumn(f.length>4 && f[4].equals("column"));
             }
             else if(f[0].equals("S")) {
                 setText(file,s.getParagraph(start),slot+". "+value,style);
@@ -214,6 +228,7 @@ public class HaeanFill {
                 List<Paragraph> opts=new ArrayList<>();
                 for(int i=start+1;i<end;i++) if(normal(s.getParagraph(i)).startsWith("①")||normal(s.getParagraph(i)).startsWith("④"))opts.add(s.getParagraph(i));
                 if(opts.size()!=2)throw new IllegalStateException("Expected two option rows");
+                if(f.length>4 && f[4].equals("diagram_only"))remove.addAll(opts);
                 String[] lines=value.split("\u001e",-1);
                 if(lines.length!=2 && lines.length!=5)throw new IllegalArgumentException("Two compact rows or five option paragraphs required");
                 setText(file,opts.get(0),lines[0],style);
@@ -224,7 +239,7 @@ public class HaeanFill {
                 }
             } else if(f[0].equals("G")) {
                 ControlTable outer=(ControlTable)boxes.get(0).getControlList().get(0);
-                Cell parent=outer.getRowList().get(0).getCellList().get(0);
+                Cell parent=bodyCell(outer);
                 Paragraph holder=boxes.get(0).clone();
                 ControlTable grid=(ControlTable)holder.getControlList().get(0);
                 Cell prototype=grid.getRowList().get(0).getCellList().get(0).clone();

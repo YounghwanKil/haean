@@ -218,7 +218,7 @@ def dispatch(a):
         draft = Draft.model_validate_json((a.draft if a.command == "check" else a.run / "candidate.json").read_text())
         if a.command == "review-result" and hashlib.sha256((a.run / "candidate.json").read_bytes()).hexdigest() != a.candidate_sha:
             raise ValueError("검토 대상과 현재 문항의 해시가 다릅니다. 현행 문항을 다시 검토하세요.")
-        errors = validate(draft, brief, {r["id"] for r in context["references"]})
+        errors = validate(draft, brief, {r["id"] for r in context["references"]}, context.get("exam_assignment"))
         if similarity(draft, context["references"]):
             errors.append("참고자료와 긴 문구가 겹칩니다. 독창성 검토 필요.")
         if a.command == "check":

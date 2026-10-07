@@ -107,13 +107,14 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         else:
             op('S', slot, '문제', item.stem)
         if group and not group['first']:
-            op('X', slot, '박스내용(들여쓰기)', '')
+            op('X', slot, '박스내용(들여쓰기)', '', 'column' if any(f.placement in {'passage','statements'} for f in item.figures) else 'flow')
         else:
             op('P', slot, '박스내용(들여쓰기)', item.passage + ''.join('\n'+t.title+' ('+t.unit+')'+('\n'+t.note if t.note else '') for t in item.tables))
         op('B', slot, '보기내용(내어쓰기)', '\n'.join(item.statements))
-        opts = [f'{"①②③④⑤"[o.number-1]} {o.text}' for o in item.options]
+        opts = [('①②③④⑤'[o.number-1] if o.text.strip() == '①②③④⑤'[o.number-1] else f'{"①②③④⑤"[o.number-1]} {o.text}') for o in item.options]
         rows = ['\t'.join(opts[:3]), '\t'.join(opts[3:])] if max(map(len, opts)) < 18 else opts
-        op('O', slot, '선택지', '\x1e'.join(rows))
+        diagram_only=all(o.text.strip() == '①②③④⑤'[o.number-1] for o in item.options) and {f.placement for f in item.figures if f.placement.startswith('option_')} == {f'option_{n}' for n in range(1,6)}
+        op('O', slot, '선택지', '\x1e'.join(rows), 'diagram_only' if diagram_only else 'text')
         for table in item.tables:
             if group and not group['first']: continue
             values = [str(v) for row in [table.columns, *table.rows] for v in row]
@@ -124,7 +125,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
             folder = output.parent/(output.stem+'-figures')/str(slot)
             paths = render_item(item, folder)
             for figure in item.figures:
-                if figure.placement == 'passage': op('I', slot, '표-가운데', str(paths[figure.id].resolve()), 'passage')
+                if figure.placement in {'passage', 'statements'}: op('I', slot, '표-가운데', str(paths[figure.id].resolve()), figure.placement)
             grid = option_grid(item, paths, folder/'options.png')
             if grid: op('I', slot, '표-가운데', str(grid.resolve()), 'options')
     spec = output.with_suffix('.fill.tsv'); spec.write_text('\n'.join(operations)+'\n')

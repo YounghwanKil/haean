@@ -17,7 +17,7 @@ def export_review(run: Path):
         from .figures import render_item
         figure_paths = render_item(item, run/'figures'/str(i)) if item.figures else {}
         def figure_html(placement):
-            return ''.join(f'<figure><img style="max-width:100%" src="{esc(str(figure_paths[f.id].relative_to(run)))}" alt="{esc(f.title)}"><figcaption>{esc(f.note)}</figcaption></figure>'
+            return ''.join(f'<figure><img style="max-width:100%" src="{esc(str(figure_paths[f.id].relative_to(run)))}" alt="{esc(f.title)}"><figcaption>{esc(f.note if f.kind != 'argument' else '')}</figcaption></figure>'
                            for f in item.figures if f.placement == placement)
         block = f"<article><h2>{i}. {esc(item.stem)}</h2>" + para(item.passage)
         block += figure_html('passage')
@@ -28,6 +28,7 @@ def export_review(run: Path):
                 block += "<tr>" + "".join(f"<td>{esc(c)}</td>" for c in row) + "</tr>"
             block += "</tbody></table>" + para(table.note)
         if item.statements: block += "<aside>" + para("\n".join(item.statements)) + "</aside>"
+        block += figure_html('statements')
         block += "<ol>" + "".join(f"<li>{esc(o.text)}{figure_html('option_'+str(o.number))}</li>" for o in item.options) + "</ol></article>"
         problem.append(block)
         solution.append(f"<article><h2>{i}. 정답 {item.answer}</h2>" + para(item.explanation) +

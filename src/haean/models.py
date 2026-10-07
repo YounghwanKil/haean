@@ -73,7 +73,7 @@ class FigureSeries(StrictModel):
 
 class Figure(StrictModel):
     id: str
-    placement: Literal['passage', 'option_1', 'option_2', 'option_3', 'option_4', 'option_5']
+    placement: Literal['passage', 'statements', 'option_1', 'option_2', 'option_3', 'option_4', 'option_5']
     kind: Literal['argument', 'bar', 'line']
     title: str
     x_label: str
@@ -83,6 +83,11 @@ class Figure(StrictModel):
     nodes: list[FigureNode]
     edges: list[FigureEdge]
     note: str
+    y_min: float | None = None
+    y_max: float | None = None
+    y_ticks: list[float] = Field(default_factory=list)
+    show_values: bool = False
+    layout_note: str = ""
 
     @model_validator(mode='after')
     def structure(self):
@@ -93,6 +98,18 @@ class Figure(StrictModel):
                 raise ValueError('도식 연결의 노드 참조 오류')
         elif not self.categories or not self.series or any(len(s.values) != len(self.categories) for s in self.series):
             raise ValueError('그래프 범주와 계열 길이 불일치')
+        import math
+        numbers = [v for series in self.series for v in series.values] + self.y_ticks
+        numbers += [v for v in (self.y_min, self.y_max) if v is not None]
+        if not all(math.isfinite(v) for v in numbers): raise ValueError('그래프 수치는 유한해야 합니다')
+        if (self.y_min is None) != (self.y_max is None): raise ValueError('그래프 축 최솟값·최댓값을 함께 지정하세요')
+        if self.y_min is not None:
+            if self.y_min >= self.y_max: raise ValueError('그래프 축 범위 역전')
+            if any(not self.y_min <= v <= self.y_max for v in numbers): raise ValueError('그래프 수치·눈금이 축 범위를 벗어납니다')
+        if self.y_ticks and (self.y_min is None or any(a >= b for a,b in zip(self.y_ticks,self.y_ticks[1:]))):
+            raise ValueError('눈금은 명시한 축 범위 안에서 오름차순이어야 합니다')
+        if self.kind == 'argument' and (self.y_min is not None or self.y_ticks or self.show_values):
+            raise ValueError('논증 도식에 수치 축 설정을 사용할 수 없습니다')
         return self
 
 

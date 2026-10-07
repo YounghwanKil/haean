@@ -35,8 +35,12 @@ def arithmetic(expression: str) -> Fraction:
 
 def public_item(item):
     """Answer/design/reference-free payload for independent solving."""
-    return {key: item.model_dump()[key] for key in
-            ("id", "stem", "passage", "statements", "tables", "options", "shared_passage_id", "figures")}
+    result = {key: item.model_dump()[key] for key in
+              ("id", "stem", "passage", "statements", "tables", "options", "shared_passage_id", "figures")}
+    for figure in result['figures']:
+        figure.pop('layout_note', None)
+        if figure['kind'] == 'argument': figure['note'] = ''  # Legacy argument note is an editor-only layout memo.
+    return result
 
 
 def validate(draft: Draft, brief: Brief, allowed_sources: set[str], item_specs=None) -> list[str]:

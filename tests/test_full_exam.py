@@ -74,3 +74,19 @@ def test_shared_layout_requires_same_adjacent_passage(draft):
     b.passage=a.passage
     other=a.model_copy(deep=True);other.shared_passage_id=None
     with pytest.raises(ValueError,match='인접'):shared_layout([a,other,b])
+
+
+def test_manual_check_uses_each_shared_item_type(tmp_path,draft,brief,monkeypatch):
+    from haean.cli import main
+    first=draft.items[0];first.shared_passage_id='shared'
+    second=first.model_copy(deep=True);second.id='TEST-002';second.item_type='자료 변환'
+    draft.items.append(second)
+    shared_brief=brief.model_copy(update={'count':2,'shared_passage':True})
+    (tmp_path/'context.json').write_text(json.dumps({'brief':shared_brief.model_dump(),
+        'references':[{'id':'source-1','text':''}],
+        'exam_assignment':[{'id':first.id,'item_type':first.item_type},{'id':second.id,'item_type':second.item_type}]}))
+    source=tmp_path/'input.json';source.write_text(draft.model_dump_json())
+    monkeypatch.setattr('sys.argv',['haean-tool','check',str(tmp_path),str(source)])
+    main()
+    status=json.loads((tmp_path/'status.json').read_text())
+    assert status['state']=='awaiting_independent_review' and status['errors']==[]
