@@ -142,6 +142,7 @@ def main():
     p.add_argument("--start", type=int, default=1)
     p.add_argument("--kind", choices=["questions", "solutions"], default="questions")
     p.add_argument("--total-pages", type=int, help="한글 렌더에서 확인한 문제지 전체 쪽 수로 바탕쪽 분모 보정; 재렌더 확인 필요")
+    p.add_argument("--page-start", type=int, action="append", default=[], help="해당 문제를 새 쪽에서 시작; 실제 배치 검토 후 지정, 반복 가능")
     p = sub.add_parser("layout-package")
     p.add_argument("run", type=Path)
     p.add_argument("--question-template", type=Path, required=True)
@@ -190,7 +191,7 @@ def dispatch(a):
         return role_packet(a.name)
     if a.command == "layout-fill":
         from .hwp import fill_template
-        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind, a.total_pages)
+        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind, a.total_pages, a.page_start)
     if a.command == "layout-package":
         from .layout import package
         return package(a.run, a.question_template, a.solution_template)

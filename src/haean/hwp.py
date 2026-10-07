@@ -52,7 +52,7 @@ def java_tool(name, *args):
     if p.returncode: raise RuntimeError(p.stderr[-3000:])
 
 
-def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None):
+def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None):
     """Fill an existing 40-slot blank master. Missing slots stay explicitly pending."""
     import base64
     if kind not in {'questions', 'solutions'}: raise ValueError('지원되지 않는 양식 종류')
@@ -69,6 +69,11 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
     if not items or start < 1 or start + len(items) - 1 > 40: raise ValueError('1–40번 슬롯 범위가 필요합니다')
     if len({(b['exam'], b['subject']) for b in briefs}) != 1: raise ValueError('다른 시험·과목을 한 시험지에 섞을 수 없습니다')
     shared = shared_layout(items, start) if kind == 'questions' else {}
+    page_starts = sorted(set(page_starts or []))
+    if page_starts and (kind != 'questions' or any(n <= 1 or n < start or n >= start+len(items) for n in page_starts)):
+        raise ValueError('새 쪽 시작은 출력에 포함된 2번 이후 문제에만 지정할 수 있습니다')
+    if any(n in shared and not shared[n]['first'] for n in page_starts):
+        raise ValueError('공통지문의 두 번째 문항만 새 쪽으로 분리할 수 없습니다')
     output.parent.mkdir(parents=True, exist_ok=True)
     ir = output.with_suffix('.template.json')
     execute('convert', template.resolve(), '--to', 'json', '-o', ir)
@@ -129,6 +134,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
                 if figure.placement in {'passage', 'statements'}: op('I', slot, '표-가운데', str(paths[figure.id].resolve()), figure.placement)
             grid = option_grid(item, paths, folder/'options.png')
             if grid: op('I', slot, '표-가운데', str(grid.resolve()), 'options')
+    operations.extend('D\t'+str(n) for n in page_starts)
     spec = output.with_suffix('.fill.tsv'); spec.write_text('\n'.join(operations)+'\n')
     java_tool('HaeanFill' if kind == 'questions' else 'HaeanSolutions', template.resolve(), spec.resolve(), output.resolve())
     reread = output.with_suffix('.txt'); execute('convert', output, '-o', reread)
@@ -148,6 +154,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'answer_grid_and_boxes_reread_verified': kind == 'solutions',
               'editorial_commentary_included': False,
               'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
+              'page_start_slots': page_starts,
               'native_page_count_verified': False,
               'shared_passage_pairs': [s['pair'] for s in shared.values() if s['first']],
               'figure_count': sum(len(i.figures) for i in items), 'figures_visually_verified': False,

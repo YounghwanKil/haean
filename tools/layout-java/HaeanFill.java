@@ -168,6 +168,13 @@ public class HaeanFill {
                 if(changed!=3)throw new IllegalStateException("Expected first-page and two background page totals in supplied master");
                 continue;
             }
+            if(f[0].equals("D")) {
+                Integer index=starts.get(Integer.parseInt(f[1]));
+                if(index==null)throw new IllegalArgumentException("Missing page-start slot");
+                s.getParagraph(index).getHeader().getDivideSort().setDivideColumn(false);
+                s.getParagraph(index).getHeader().getDivideSort().setDividePage(true);
+                continue;
+            }
             int slot=Integer.parseInt(f[1]);int style=Integer.parseInt(f[2]);String value=decode(f[3]);
             Integer start=starts.get(slot);if(start==null)throw new IllegalArgumentException("Missing slot "+slot);
             int end=starts.getOrDefault(slot+1,s.getParagraphCount());

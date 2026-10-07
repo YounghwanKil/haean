@@ -72,3 +72,22 @@ def test_solution_export_preserves_reasoning_without_editorial_history(tmp_path,
     assert all(j.explanation in solution for j in draft.items[0].judgments)
     assert 'source_ids' not in solution and 'exam_contract' not in solution
     assert candidate.read_bytes() == original
+
+
+@pytest.mark.parametrize('page_start,kind', [(1,'questions'), (41,'questions'), (2,'solutions')])
+def test_page_start_refuses_invalid_scope_before_export(tmp_path, draft, brief, page_start, kind):
+    (tmp_path/'candidate.json').write_text(draft.model_dump_json())
+    (tmp_path/'brief.json').write_text(brief.model_dump_json())
+    with pytest.raises(ValueError, match='새 쪽 시작'):
+        hwp.fill_template([tmp_path],tmp_path/'template.hwp',tmp_path/'out.hwp','검토',kind=kind,page_starts=[page_start])
+    assert not (tmp_path/'out.template.json').exists()
+
+
+def test_page_start_does_not_separate_shared_second_question(tmp_path, draft, brief):
+    draft.items[0].shared_passage_id='PAIR'
+    second=draft.items[0].model_copy(deep=True);second.id='TEST-002'
+    draft.items.append(second)
+    (tmp_path/'candidate.json').write_text(draft.model_dump_json())
+    (tmp_path/'brief.json').write_text(brief.model_dump_json())
+    with pytest.raises(ValueError, match='공통지문'):
+        hwp.fill_template([tmp_path],tmp_path/'template.hwp',tmp_path/'out.hwp','검토',page_starts=[2])
