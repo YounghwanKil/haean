@@ -4,6 +4,20 @@ from haean.full_exam import load_plan, bundles, check_slot, assemble
 from haean.validation import validate
 
 
+def test_whole_exam_report_exposes_balanced_but_repetitive_answers():
+    from haean.full_exam import composition_observations
+    plan={'slots':[{'number':n,'difficulty':'중'} for n in range(1,41)]}
+    items=[{'number':n,'answer':(n-1)%5+1,'difficulty':'중'} for n in range(1,41)]
+    items[14]['difficulty']='하'
+    report=composition_observations(plan,items)
+    assert report['all_five_answers_once_blocks']==8
+    assert report['difficulty_mismatches']==[{'number':15,'planned':'중','actual':'하'}]
+    # Missing questions must not make later answers shift into an earlier block.
+    report=composition_observations(plan,items[1:])
+    assert len(report['five_item_blocks'])==7
+    assert report['five_item_blocks'][0]['numbers']==[6,7,8,9,10]
+
+
 def test_full_plan_requires_every_number(tmp_path):
     p=tmp_path/'plan.json'
     p.write_text(json.dumps({'exam':'leet','subject':'추리논증','slots':[]}))

@@ -158,12 +158,37 @@ def assemble(out):
     result = {'exam': plan['exam'], 'subject': plan['subject'], 'requested': len(plan['slots']),
         'written': len(items), 'items': status, 'errors': errors, 'answer_distribution': dict(Counter(answers)),
         'three_answer_streak_endings': repeated, 'item_runs': item_runs,
+        'composition_observations': composition_observations(plan, items),
         'ready_for_human_review': len(items) == len(plan['slots']) and not errors,
         'human_approved': False, 'layout_verified': False, 'delivery_ready': False}
     save(out/'assembled.json', result)
     save(out/'exam-items.json', {'items': items})
     render_exam(out, items, result)
     return result
+
+
+def composition_observations(plan, items):
+    """Describe whole-exam patterns without treating counts as quality scores."""
+    by_number = {i['number']: i for i in items}
+    blocks = []
+    for start in range(1, len(plan['slots']) + 1, 5):
+        numbers = list(range(start, start + 5))
+        if not all(n in by_number for n in numbers): continue
+        answers = [by_number[n]['answer'] for n in numbers]
+        blocks.append({'numbers': numbers, 'answers': answers,
+                       'all_five_answers_once': sorted(answers) == [1, 2, 3, 4, 5]})
+    mismatches = []
+    for slot in plan['slots']:
+        actual = by_number.get(slot['number'], {}).get('difficulty')
+        expected = slot.get('difficulty')
+        if actual and expected and actual != expected:
+            mismatches.append({'number': slot['number'], 'planned': expected, 'actual': actual})
+    return {'five_item_blocks': blocks,
+            'all_five_answers_once_blocks': sum(b['all_five_answers_once'] for b in blocks),
+            'planned_difficulty': dict(Counter(s['difficulty'] for s in plan['slots'] if s.get('difficulty'))),
+            'actual_difficulty': dict(Counter(i['difficulty'] for i in items if i.get('difficulty'))),
+            'difficulty_mismatches': mismatches,
+            'note': '회차 편집 검토용 관찰값. 균등 분포나 패턴 개수로 합격을 판정하지 않는다. 난도는 실측값이 아니다.'}
 
 
 def check_slot(slot, item, subject):
