@@ -29,10 +29,24 @@ def production_status(folder):
             reviewed += len(job['slots'])
         if state.get('state') == 'awaiting_human_review' and not bound:
             warnings.append(f"묶음 {job['bundle']}: 검토 버전 해시 불일치")
+        reviews = sorted(run.glob('review-r*.json'),
+                         key=lambda p: int(p.stem.removeprefix('review-r'))
+                         if p.stem.removeprefix('review-r').isdigit() else -1)
+        last_review = None
+        if reviews:
+            try:
+                review = json.loads(reviews[-1].read_text())
+                last_review = {'revision': review.get('revision'),
+                               'errors': review.get('errors', []),
+                               'issues': review.get('blind', {}).get('issues', []) +
+                                         review.get('editorial', {}).get('issues', [])}
+            except json.JSONDecodeError:
+                warnings.append(f"묶음 {job['bundle']}: 최근 검토 파일 저장 중 또는 손상")
         jobs.append({'bundle': job['bundle'], 'slots': job['slots'],
                      'manifest_state': job['state'], 'run_state': state.get('state'),
                      'last_requested_stage': traces[-1].name.removesuffix('.input.json') if traces else None,
                      'reviewed_candidate_hash_matches': bool(passed),
+                     'last_saved_review': last_review,
                      'errors': job.get('errors', []), 'error': job.get('error')})
     return {'folder': str(folder), 'exam': manifest['exam'], 'subject': manifest['subject'],
             'total_items': manifest['total'], 'total_bundles': len(jobs),
