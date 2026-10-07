@@ -24,7 +24,12 @@ def banner(madmax=False, *, large=False, skill="haean"):
     print()
     if large:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from branding import welcome_lines
+        from branding import welcome_lines, wordmark_lines
+        for line in wordmark_lines(width, color):
+            print(line, flush=True)
+        if animate:
+            time.sleep(1.5)
+        print(flush=True)
         for line in welcome_lines(width, color, madmax, skill):
             print(line, flush=True)
             if animate:

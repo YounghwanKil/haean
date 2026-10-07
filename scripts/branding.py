@@ -1,6 +1,22 @@
 """Portable block-character companion to the HAEAN wave/book mascot."""
 import unicodedata
 
+WORDMARK = (
+    '██╗  ██╗ █████╗ ███████╗ █████╗ ███╗   ██╗',
+    '██║  ██║██╔══██╗██╔════╝██╔══██╗████╗  ██║',
+    '███████║███████║█████╗  ███████║██╔██╗ ██║',
+    '██╔══██║██╔══██║██╔══╝  ██╔══██║██║╚██╗██║',
+    '██║  ██║██║  ██║███████╗██║  ██║██║ ╚████║',
+    '╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝',
+)
+
+
+def wordmark_lines(width, color=False):
+    accent = '\033[36;1m' if color else ''
+    reset = '\033[0m' if color else ''
+    art = WORDMARK if width >= max(map(display_width, WORDMARK)) + 2 else ('H A E A N / 해안',)
+    return [f'{accent}  {line}{reset}' for line in art]
+
 # Original terminal artwork; . = transparent, N = ink, B = ocean, W = paper/foam.
 PIXELS = (
     '          NNNNN         ',
