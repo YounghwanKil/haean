@@ -393,8 +393,10 @@ def main():
         env.pop(key, None)
     if not (ROOT / ".agents/skills/haean/SKILL.md").exists() or not (ROOT / ".venv/bin/python").exists():
         raise ValueError("해안 설치가 필요합니다. ./haean setup 을 먼저 실행하세요")
-    banner(madmax=madmax, large=True, skill=skill)
-    return subprocess.run(codex_command(codex, task, madmax, skill), env=env).returncode
+    # Imported here so inspection commands remain dependency-free.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from terminal_ui import run as run_terminal
+    return run_terminal(codex_command(codex, task, madmax, skill), env, ROOT, banner, madmax, skill)
 
 
 if __name__ == "__main__":
