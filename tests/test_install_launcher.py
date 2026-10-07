@@ -108,3 +108,35 @@ def test_source_status_counts_roles_without_rewriting_sources(tmp_path, monkeypa
     result=module.source_status()
     assert result['records']==2 and len(result['groups'])==2
     assert path.read_bytes()==before
+
+
+def test_humanizer_setup_checks_existing_revision_without_overwriting_edits(monkeypatch):
+    module=load('launch')
+    states=iter([{'state':'mismatch','expected':'pinned','actual':'old'},
+                 {'state':'pinned','expected':'pinned','actual':'pinned'}])
+    monkeypatch.setattr(module,'humanizer_state',lambda:next(states))
+    calls=[]
+    monkeypatch.setattr(module.subprocess,'run',lambda command,**kw:calls.append(command))
+    assert module.ensure_humanizer()['state']=='pinned'
+    assert calls==[['git','submodule','update','--init','--depth','1','--','vendor/im-not-ai']]
+    calls.clear()
+    monkeypatch.setattr(module,'humanizer_state',lambda:{'state':'modified'})
+    with pytest.raises(ValueError,match='로컬 수정'):module.ensure_humanizer()
+    assert not calls
+    monkeypatch.setattr(module,'humanizer_state',lambda:{'state':'pinned'})
+    assert module.ensure_humanizer()['state']=='pinned' and not calls
+
+
+def test_humanizer_revision_distinguishes_dirty_and_wrong_commit(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    module=load('launch');monkeypatch.setattr(module,'ROOT',tmp_path)
+    (tmp_path/'.git').mkdir();vendor=tmp_path/'vendor/im-not-ai';vendor.mkdir(parents=True);(vendor/'.git').write_text('fixture')
+    def responses(actual,dirty):
+        values=iter(['160000 abc123 0\tvendor/im-not-ai\n',actual,dirty])
+        monkeypatch.setattr(module.subprocess,'run',lambda *a,**k:SimpleNamespace(stdout=next(values)))
+    responses('abc123\n','')
+    assert module.humanizer_state()['state']=='pinned'
+    responses('other\n','')
+    assert module.humanizer_state()['state']=='mismatch'
+    responses('abc123\n',' M SKILL.md\n')
+    assert module.humanizer_state()['state']=='modified'

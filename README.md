@@ -106,6 +106,9 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 
 ## im-not-ai 연결
 
+설치 시 이미 내려받은 submodule도 고정 커밋과 대조합니다. 수정 없는 다른 버전은 지정 버전으로 맞추고, 로컬 수정이 있으면 보존한 채 설치를 멈춰 안내합니다. `haean doctor`의 `humanizer_revision`에서 고정 버전·실제 버전·수정 여부를 확인할 수 있습니다.
+
+
 [im-not-ai](https://github.com/epoko77-ai/im-not-ai)를 **Git submodule로 고정**하고 `$humanize-korean` 스킬을 설치합니다. `$haean-style`은 이 도구의 실제 진단·윤문·게이트에 시험 문제용 조건 보존 검사를 더합니다.
 
 ```bash

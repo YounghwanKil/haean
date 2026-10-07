@@ -190,14 +190,51 @@ def link_skill(source: Path, target: Path):
     target.symlink_to(os.path.relpath(source, target.parent), target_is_directory=True)
 
 
+def humanizer_state():
+    """Inspect the indexed gitlink and working tree without modifying either."""
+    vendor = ROOT / "vendor/im-not-ai"
+    if not (ROOT / ".git").exists():
+        return {"state": "unverifiable", "reason": "Git 클론에서 설치해야 고정 버전을 확인할 수 있습니다."}
+    try:
+        entry = subprocess.run(["git", "ls-files", "--stage", "--", "vendor/im-not-ai"],
+                               cwd=ROOT, capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+        fields = entry.split()
+        if len(fields) != 4 or fields[0] != "160000" or fields[2] != "0":
+            return {"state": "unverifiable", "reason": "고정 submodule gitlink가 없거나 충돌 상태입니다."}
+        expected = fields[1]
+        if not (vendor / ".git").exists():
+            return {"state": "missing", "expected": expected}
+        actual = subprocess.run(["git", "rev-parse", "HEAD"], cwd=vendor,
+                                capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+        dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=vendor,
+                                   capture_output=True, text=True, check=True, timeout=10).stdout.strip())
+        return {"state": "modified" if dirty else "pinned" if actual == expected else "mismatch",
+                "expected": expected, "actual": actual, "modified": dirty}
+    except (OSError, subprocess.SubprocessError):
+        return {"state": "unverifiable", "reason": "Git 버전 확인에 실패했습니다. 저장소 상태를 확인하세요."}
+
+
+def ensure_humanizer():
+    state = humanizer_state()
+    if state["state"] == "modified":
+        raise ValueError("vendor/im-not-ai에 로컬 수정이 있습니다. 내용을 보존하고 작업을 커밋하거나 별도 보관한 뒤 setup을 다시 실행하세요. 자동으로 덮어쓰지 않았습니다.")
+    if state["state"] == "unverifiable":
+        raise ValueError(state["reason"])
+    if state["state"] != "pinned":
+        subprocess.run(["git", "submodule", "update", "--init", "--depth", "1", "--", "vendor/im-not-ai"], cwd=ROOT, check=True)
+        state = humanizer_state()
+        if state["state"] != "pinned":
+            raise ValueError("im-not-ai 고정 커밋 확인에 실패했습니다. 기존 자료를 보존하고 submodule 상태를 확인하세요.")
+    return state
+
+
 def setup():
     if sys.version_info < (3, 11):
         raise ValueError("Python 3.11 이상이 필요합니다")
     for source in (ROOT / "skills").iterdir():
         if (source / "SKILL.md").is_file():
             link_skill(source, ROOT / ".agents/skills" / source.name)
-    if not (ROOT / "vendor/im-not-ai/.git").exists():
-        subprocess.run(["git", "submodule", "update", "--init", "--depth", "1"], cwd=ROOT, check=True)
+    ensure_humanizer()
     humanizer = ROOT / "vendor/im-not-ai/codex/skills/humanize-korean"
     if not (humanizer / "SKILL.md").is_file():
         raise ValueError("고정된 im-not-ai submodule을 불러오지 못했습니다")
@@ -241,7 +278,8 @@ def doctor(strict=False):
     dependencies = subprocess.run([str(python), "-c", "import haean, pydantic, openpyxl, olefile"],
                                   cwd=ROOT, capture_output=True, text=True, timeout=10) if python.exists() else None
     tools_ready = bool(dependencies and dependencies.returncode == 0)
-    humanizer = (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists()
+    humanizer_revision = humanizer_state()
+    humanizer = (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists() and humanizer_revision["state"] == "pinned"
     sources = source_status()
     figures = subprocess.run([str(python), "-c", "import matplotlib, PIL"], cwd=ROOT,
                              capture_output=True, text=True, timeout=10) if python.exists() else None
@@ -251,6 +289,8 @@ def doctor(strict=False):
     elif not logged_in: actions.append("codex login 으로 ChatGPT 구독 계정에 로그인하세요.")
     if not tools_ready or not humanizer or not all(s['discovered'] for s in skills):
         actions.append("./haean setup 으로 프로젝트 도구와 스킬을 설치하세요.")
+    if humanizer_revision["state"] == "modified":
+        actions.append("vendor/im-not-ai의 로컬 수정을 보존·정리한 뒤 setup을 실행하세요. 고정 버전과 다른 윤문 실행으로 구분해야 합니다.")
     if sources['state'] != 'indexed': actions.append('haean tools import /허용된/자료경로 로 출제 참고자료를 가져오세요.')
     if not figures_ready: actions.append("도식·그래프 문항은 haean setup-figures 로 이미지 검토 도구를 설치하세요.")
     layout_ready = (ROOT / "data/bin/hwp").is_file() and (ROOT / "data/bin/HaeanFill.class").is_file()
@@ -260,7 +300,7 @@ def doctor(strict=False):
     print(json.dumps({"root": str(ROOT), "codex": codex,
                       "chatgpt_login": logged_in,
                       "tools_installed": tools_ready,
-                      "humanizer": (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists(),
+                      "humanizer": humanizer, "humanizer_revision": humanizer_revision,
                       "skills": skills, "roles": roles, "core_ready": ready,
                       "runtime_role_loading": "not_verified",
                       "runtime_role_note": "역할 파일 검증과 실제 로딩은 다릅니다. 프로젝트 신뢰와 세션 도구를 확인하세요. 미지원 시 role 명령의 지침 전달 경로를 사용합니다.",
