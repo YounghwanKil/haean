@@ -108,6 +108,8 @@ def main():
     p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("exam-assemble", help="작성 묶음을 회차 번호대로 모아 검토본 생성")
     p.add_argument("folder", type=Path)
+    p = sub.add_parser("exam-status", help="모델 호출 없이 회차의 저장된 진행 단계와 오류 조회")
+    p.add_argument("folder", type=Path)
     p = sub.add_parser("exam-resume", help="기존 이력을 보존하고 미완료 묶음만 새 실행에서 재개")
     p.add_argument("folder", type=Path)
     p.add_argument("--out", type=Path, required=True)
@@ -167,6 +169,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == 'exam-status':
+        from .production_status import production_status
+        return production_status(a.folder)
     if a.command == "wiki":
         from . import wiki
         if a.operation == "put":

@@ -4,9 +4,12 @@
 
 ```sh
 ./haean tools exam-build runs/example/assembly.json --out runs/example/production-v1 --workers 3
+./haean tools exam-status runs/example/production-v1
 ./haean tools exam-resume runs/example/production-v1 --out runs/example/production-v2 --workers 3
 ./haean tools exam-assemble runs/example/production-v2
 ```
+
+생성이 오래 걸릴 때 다른 터미널에서 `exam-status`로 묶음별 마지막 요청 단계, 오류와 검토 버전 해시가 일치하는 문항 수를 확인한다. 이 명령은 모델을 호출하거나 작업을 재시작하지 않는다. `last_requested_stage`는 요청 기록이며 해당 단계의 완료나 프로세스 생존을 뜻하지 않는다. 실행 중인 원래 터미널과 함께 확인한다. 모델 검토 수는 전문가 승인·한글 인쇄 검증 수가 아니다.
 
 모델 검토를 마친 후보는 해시와 ID 순서를 확인해 재사용한다. 미완료 묶음에 저장된 초안이 있으면 마지막 초안과 그 버전의 텍스트 지적을 새 run으로 전달한다. 초안 없이 중단된 일반 묶음은 최대 2문항으로 나누며 공통지문 세트는 유지한다. 기존 초안의 참고자료를 소급 교체하지 않는다. 새 실행의 블라인드 풀이에는 정답·해설·이전 검토를 전달하지 않는다.
 
