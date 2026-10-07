@@ -97,7 +97,8 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
                 label = '①②③④⑤'[int(judgment.target)-1] if judgment.target in {'1','2','3','4','5'} else judgment.target
                 op('T', slot, '정오판단_선지', label + ' (' + judgment.verdict + ')')
                 op('T', slot, '정오판단_설명', judgment.explanation)
-            if item.commentary: op('T', slot, '코멘트내용 8pt', item.commentary)
+            # Commentary can contain source corrections and reviewer history.
+            # Keep it in candidate.json, not the student-facing solution.
             continue
         group = shared.get(slot)
         if group and group['first']:
@@ -145,6 +146,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'filled_slots': list(range(start, start+len(items))), 'capacity': 40,
               'answer_key': {str(n): item.answer for n, item in enumerate(items, start)},
               'answer_grid_and_boxes_reread_verified': kind == 'solutions',
+              'editorial_commentary_included': False,
               'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
               'native_page_count_verified': False,
               'shared_passage_pairs': [s['pair'] for s in shared.values() if s['first']],

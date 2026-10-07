@@ -32,7 +32,7 @@ def export_review(run: Path):
         block += "<ol>" + "".join(f"<li>{esc(o.text)}{figure_html('option_'+str(o.number))}</li>" for o in item.options) + "</ol></article>"
         problem.append(block)
         solution.append(f"<article><h2>{i}. 정답 {item.answer}</h2>" + para(item.explanation) +
-                        para(item.commentary) + "<ul>" + "".join(f"<li>{esc(j.target)}: {esc(j.verdict)} — {esc(j.explanation)}</li>" for j in item.judgments) + "</ul></article>")
+                        "<ul>" + "".join(f"<li>{esc(j.target)}: {esc(j.verdict)} — {esc(j.explanation)}</li>" for j in item.judgments) + "</ul></article>")
     for name, blocks in [("questions", problem), ("solutions", solution)]:
         body = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>해안 검토용</title>
 <style>body{font-family:serif;max-width:850px;margin:40px auto;line-height:1.8;color:#17212b}article{padding:24px 0;border-bottom:1px solid #bbb;break-inside:avoid}h2{font-size:19px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #777;padding:6px}aside{border:1px solid #aaa;padding:12px}li{padding:5px}header{font-family:sans-serif;color:#555}@media print{body{margin:0}article{break-inside:auto}}</style>"""

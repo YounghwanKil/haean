@@ -57,3 +57,18 @@ def test_layout_refuses_existing_output(tmp_path):
     with pytest.raises(ValueError, match='덮어쓰지'):
         hwp.fill_template([],output,output,'검토')
     assert output.read_bytes()==b'original'
+
+
+def test_solution_export_preserves_reasoning_without_editorial_history(tmp_path, draft):
+    from haean.export import export_review
+    draft.items[0].commentary = 'source_ids를 교체했다. brief와 exam_contract의 배정 기록.'
+    candidate = tmp_path/'candidate.json'
+    candidate.write_text(draft.model_dump_json())
+    original = candidate.read_bytes()
+    (tmp_path/'status.json').write_text(json.dumps({'state': 'awaiting_human_review'}))
+    export_review(tmp_path)
+    solution = (tmp_path/'solutions.html').read_text()
+    assert draft.items[0].explanation in solution
+    assert all(j.explanation in solution for j in draft.items[0].judgments)
+    assert 'source_ids' not in solution and 'exam_contract' not in solution
+    assert candidate.read_bytes() == original

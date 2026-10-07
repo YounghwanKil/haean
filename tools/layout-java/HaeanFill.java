@@ -36,11 +36,13 @@ public class HaeanFill {
         if(cell==null)throw new IllegalStateException("Expected full-width body cell in box");
         return cell;
     }
-    static void fillBox(HWPFile file, Paragraph p, String value, int style) throws Exception {
+    static void fillBox(HWPFile file, Paragraph p, String value, int style, boolean firstSlot) throws Exception {
         ControlTable table=(ControlTable)p.getControlList().get(0);
-        table.getTable().getProperty().setDivideAtPageBoundary(DivideAtPageBoundary.Divide);
+        // A split cell continuing into the first page's right column ignores the
+        // floating title block in Hancom 2014. Move the whole first-slot box.
+        table.getTable().getProperty().setDivideAtPageBoundary(firstSlot ? DivideAtPageBoundary.NoDivide : DivideAtPageBoundary.Divide);
         table.getHeader().getProperty().setLikeWord(false);
-        table.getHeader().setPreventPageDivide(false);
+        table.getHeader().setPreventPageDivide(firstSlot);
         table.getHeader().setOutterMarginBottom(600);
         Cell cell=bodyCell(table);
         cell.getParagraphList().deleteAllParagraphs();
@@ -219,10 +221,10 @@ public class HaeanFill {
                 setText(file,s.getParagraph(start),slot+". "+value,style);
                 if(slot>1) {s.getParagraph(start).getHeader().getDivideSort().setDividePage(false);s.getParagraph(start).getHeader().getDivideSort().setDivideColumn(true);}
             }
-            else if(f[0].equals("P"))fillBox(file,boxes.get(0),value,style);
+            else if(f[0].equals("P"))fillBox(file,boxes.get(0),value,style,slot==1);
             else if(f[0].equals("B")) {
                 if(value.isBlank())remove.add(boxes.get(1));
-                else fillBox(file,boxes.get(1),value,style);
+                else fillBox(file,boxes.get(1),value,style,slot==1);
             }
             else if(f[0].equals("O")) {
                 List<Paragraph> opts=new ArrayList<>();
