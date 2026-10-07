@@ -111,12 +111,15 @@ def audit(candidates, previous, limit=5):
             rank = max(scores['passage'], scores['reasoning'], .6*scores['options']+.4*scores['reasoning'])
             hits.append({'previous_id': other['item']['id'], 'previous_exam': other['exam'], 'previous_sha256': other['sha256'], 'previous_source': other['source'], 'previous_item': other['item'], 'scores': scores, 'rank': round(rank,4), 'review_candidate': flagged, 'shared_passage_pair': paired})
         hits.sort(key=lambda x: (-x['rank'], x['previous_id']))
-        # Keep the closest historical version of each other question; revisions
-        # must not fill all nearest-neighbor slots or count as new questions.
+        # Keep one version per lineage, preferring a flagged version if present.
+        # A higher weighted rank can otherwise hide an older threshold match.
         unique = {}
         for hit in hits:
-            unique.setdefault((hit['previous_exam'], hit['previous_id']), hit)
-        hits = list(unique.values())
+            identity = (hit['previous_exam'], hit['previous_id'])
+            current_hit = unique.get(identity)
+            if current_hit is None or (hit['review_candidate'] and not current_hit['review_candidate']):
+                unique[identity] = hit
+        hits = sorted(unique.values(), key=lambda x: (-x['rank'], x['previous_id']))
         # The display limit must not hide a threshold-triggered review candidate.
         neighbors = [hit for index, hit in enumerate(hits)
                      if index < limit or hit['review_candidate']]

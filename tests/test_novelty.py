@@ -48,6 +48,28 @@ def test_display_limit_does_not_hide_flagged_questions():
     assert len(result['neighbors']) == 8
 
 
+def test_flagged_old_version_survives_higher_ranked_unflagged_revision(monkeypatch):
+    from haean import novelty
+    candidate = row('new')
+    flagged = row('old', 1)
+    unflagged = row('old', 2)
+    base = set(range(50))
+
+    def overlap(count):
+        return set(range(count)) | set(range(100, 150-count))
+
+    vectors = {
+        candidate['sha256']: dict(passage=base, reasoning=base, options=base, data=set()),
+        flagged['sha256']: dict(passage=overlap(28), reasoning=set(), options=set(), data=set()),
+        unflagged['sha256']: dict(passage=overlap(27), reasoning=overlap(14), options=base, data=set()),
+    }
+    monkeypatch.setattr(novelty, 'features', lambda item: vectors[digest(item)])
+    result = audit([candidate], [flagged, unflagged], limit=1)['items'][0]
+    assert result['flagged_neighbor_count'] == 1
+    assert len(result['neighbors']) == 1
+    assert result['neighbors'][0]['previous_sha256'] == flagged['sha256']
+
+
 def test_old_question_remains_searchable_after_100_other_items(tmp_path):
     import random
     rng = random.Random(42)
