@@ -16,7 +16,7 @@ def test_madmax_is_explicit_and_task_is_single_argument():
     assert normal[normal.index('-m') + 1] == 'gpt-6-astra'
 
 
-def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys):
+def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys, tmp_path):
     import json
     import pytest
     from types import SimpleNamespace
@@ -30,6 +30,12 @@ def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys):
     assert launch.select_skill('psat')['name']=='haean-psat'
     assert launch.select_skill('$haean-reading')['name']=='haean-reading'
     with pytest.raises(ValueError):launch.select_skill('../../outside')
+    # Dispatch fixture is independent of the developer's installed virtualenv.
+    (tmp_path/'skills').symlink_to(launch.ROOT/'skills',target_is_directory=True)
+    (tmp_path/'.agents').symlink_to(launch.ROOT/'.agents',target_is_directory=True)
+    (tmp_path/'.venv/bin').mkdir(parents=True)
+    (tmp_path/'.venv/bin/python').touch()
+    monkeypatch.setattr(launch,'ROOT',tmp_path)
     calls=[]
     def run(command,**kwargs):
         calls.append(command)
