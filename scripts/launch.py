@@ -85,23 +85,60 @@ def setup():
     print("해안 스킬·역할·로컬 도구 설치 완료. Codex에서 이 폴더를 다시 열고 $haean을 호출하세요.")
 
 
-def doctor():
+def source_status():
+    import sqlite3
+    database = ROOT / "data/corpus.sqlite"
+    if not database.is_file(): return {"records": 0, "state": "not_imported"}
+    try:
+        with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=2) as db:
+            rows = db.execute("SELECT exam, role, COUNT(*) FROM records GROUP BY exam, role").fetchall()
+        total = sum(row[2] for row in rows)
+        return {"records": total, "state": "indexed" if total else "empty",
+                "groups": [{"exam": exam, "role": role, "count": count} for exam, role, count in rows],
+                "note": "색인 수는 정답·전문가 검증 수가 아닙니다."}
+    except sqlite3.Error:
+        return {"records": None, "state": "unreadable", "note": "원본을 보존하고 DB 경로·스키마를 확인하세요."}
+
+
+def doctor(strict=False):
     skills = []
     for source in sorted((ROOT / "skills").iterdir()):
         if (source / "SKILL.md").exists():
             target = ROOT / ".agents/skills" / source.name
-            skills.append({"name": source.name, "discovered": target.exists()})
+            skills.append({"name": source.name, "discovered": target.exists() and target.resolve() == source.resolve()})
     roles = []
     for file in sorted((ROOT / ".codex/agents").glob("*.toml")):
         role = tomllib.loads(file.read_text())
         roles.append({"name": role["name"], "valid": all(role.get(k) for k in ("name", "description", "developer_instructions"))})
     codex = shutil.which("codex")
-    auth = subprocess.run([codex, "login", "status"], capture_output=True, text=True) if codex else None
+    auth = subprocess.run([codex, "login", "status"], capture_output=True, text=True, timeout=10) if codex else None
+    logged_in = bool(auth and auth.returncode == 0 and "ChatGPT" in auth.stdout + auth.stderr)
+    python = ROOT / ".venv/bin/python"
+    dependencies = subprocess.run([str(python), "-c", "import haean, pydantic, openpyxl, olefile"],
+                                  cwd=ROOT, capture_output=True, text=True, timeout=10) if python.exists() else None
+    tools_ready = bool(dependencies and dependencies.returncode == 0)
+    humanizer = (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists()
+    sources = source_status()
+    actions = []
+    if not codex: actions.append("Codex CLI를 설치하세요: https://learn.chatgpt.com/docs/cli")
+    elif not logged_in: actions.append("codex login 으로 ChatGPT 구독 계정에 로그인하세요.")
+    if not tools_ready or not humanizer or not all(s['discovered'] for s in skills):
+        actions.append("./haean setup 으로 프로젝트 도구와 스킬을 설치하세요.")
+    if sources['state'] != 'indexed': actions.append('haean tools import /허용된/자료경로 로 출제 참고자료를 가져오세요.')
+    layout_ready = (ROOT / "data/bin/hwp").is_file() and (ROOT / "data/bin/HaeanFill.class").is_file()
+    if not layout_ready: actions.append("한글 출력이 필요하면 haean setup-layout 을 실행하고 팀의 빈 양식을 준비하세요.")
+    ready = bool(codex and logged_in and tools_ready and humanizer and skills
+                 and all(s['discovered'] for s in skills) and roles and all(r['valid'] for r in roles))
     print(json.dumps({"root": str(ROOT), "codex": codex,
-                      "chatgpt_login": bool(auth and auth.returncode == 0 and "ChatGPT" in auth.stdout + auth.stderr),
-                      "tools_installed": (ROOT / ".venv/bin/python").exists(),
+                      "chatgpt_login": logged_in,
+                      "tools_installed": tools_ready,
                       "humanizer": (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists(),
-                      "skills": skills, "roles": roles}, ensure_ascii=False, indent=2))
+                      "skills": skills, "roles": roles, "core_ready": ready,
+                      "runtime_role_loading": "not_verified",
+                      "runtime_role_note": "역할 파일 검증과 실제 로딩은 다릅니다. 프로젝트 신뢰와 세션 도구를 확인하세요. 미지원 시 role 명령의 지침 전달 경로를 사용합니다.",
+                      "sources": sources, "layout_tools_installed": layout_ready,
+                      "native_layout_verified": False, "next_actions": actions}, ensure_ascii=False, indent=2))
+    return 1 if strict and not ready else 0
 
 
 def main():
@@ -112,7 +149,7 @@ def main():
         if not python.exists(): raise ValueError("먼저 ./haean setup 을 실행하세요")
         subprocess.run([str(python), "-m", "pip", "install", "-e", ".[layout]"], cwd=ROOT, check=True)
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup_layout.py")], check=True).returncode
-    if args == ["doctor"]: return doctor()
+    if args in (["doctor"], ["doctor", "--check"]): return doctor(strict="--check" in args)
     if args == ["status"]: return status()
     if args == ["--version"]:
         print("haean " + tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"])
@@ -140,6 +177,6 @@ def main():
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (ValueError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(2)

@@ -48,3 +48,28 @@ def test_status_does_not_count_assembled_views_as_new_reviews(tmp_path, monkeypa
     output=capsys.readouterr().out
     assert "사람 검토 대기: 1묶음" in output
     assert "실행 중 여부" in output
+
+
+def test_doctor_missing_install_has_actions_and_does_not_create_database(tmp_path, monkeypatch, capsys):
+    import json
+    module=load("launch"); monkeypatch.setattr(module,"ROOT",tmp_path)
+    (tmp_path/"skills").mkdir()
+    monkeypatch.setattr(module.shutil,"which",lambda _: None)
+    assert module.doctor(strict=True)==1
+    result=json.loads(capsys.readouterr().out)
+    assert not result['core_ready'] and result['runtime_role_loading']=='not_verified'
+    assert result['sources']['state']=='not_imported' and len(result['next_actions'])==4
+    assert not (tmp_path/'data').exists()
+
+
+def test_source_status_counts_roles_without_rewriting_sources(tmp_path, monkeypatch):
+    import sqlite3
+    module=load("launch"); monkeypatch.setattr(module,"ROOT",tmp_path)
+    path=tmp_path/'data/corpus.sqlite';path.parent.mkdir()
+    with sqlite3.connect(path) as db:
+        db.execute('CREATE TABLE records(exam TEXT, role TEXT)')
+        db.executemany('INSERT INTO records VALUES (?,?)',[('leet','example'),('psat5','metadata')])
+    before=path.read_bytes()
+    result=module.source_status()
+    assert result['records']==2 and len(result['groups'])==2
+    assert path.read_bytes()==before
