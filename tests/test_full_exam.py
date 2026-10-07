@@ -60,3 +60,17 @@ def test_relative_output_assembles_and_exports_in_item_order(tmp_path, draft, br
     result=assemble('production')
     assert result['ready_for_human_review']
     assert (run.parent/'questions.html').exists() and (run.parent/'solutions.html').exists()
+
+
+def test_shared_layout_requires_same_adjacent_passage(draft):
+    from haean.hwp import shared_layout
+    a=draft.items[0].model_copy(deep=True);a.shared_passage_id='shared'
+    b=a.model_copy(deep=True);b.id='TEST-002'
+    pairs=shared_layout([a,b],19)
+    assert pairs[19]['first'] and not pairs[20]['first'] and pairs[19]['pair']==[19,20]
+    assert shared_layout([a],19)=={}
+    b.passage+=' 다른 지문'
+    with pytest.raises(ValueError,match='불일치'):shared_layout([a,b])
+    b.passage=a.passage
+    other=a.model_copy(deep=True);other.shared_passage_id=None
+    with pytest.raises(ValueError,match='인접'):shared_layout([a,other,b])

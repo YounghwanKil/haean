@@ -12,6 +12,25 @@ from .pipeline import save
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def shared_layout(items, start=1):
+    """Collapse only a complete adjacent pair with identical shared text/tables."""
+    groups = {}
+    for number, item in enumerate(items, start):
+        if item.shared_passage_id:
+            groups.setdefault(item.shared_passage_id, []).append((number, item))
+    result = {}
+    for identifier, group in groups.items():
+        if len(group) == 1: continue  # A single-item review still prints all its context.
+        if len(group) != 2 or group[1][0] != group[0][0]+1:
+            raise ValueError('공통지문 양식은 인접한 두 문항이 필요합니다: '+identifier)
+        left, right = group[0][1], group[1][1]
+        if left.passage != right.passage or left.tables != right.tables:
+            raise ValueError('공통지문·표 불일치: '+identifier)
+        result[group[0][0]] = {'first': True, 'pair': [group[0][0], group[1][0]], 'id': identifier}
+        result[group[1][0]] = {'first': False, 'pair': [group[0][0], group[1][0]], 'id': identifier}
+    return result
+
+
 def execute(*args, timeout=120):
     binary = ROOT / 'data/bin/hwp'
     if not binary.is_file(): raise ValueError('먼저 ./haean setup-layout 을 실행하세요')
@@ -33,10 +52,12 @@ def java_tool(name, *args):
     if p.returncode: raise RuntimeError(p.stderr[-3000:])
 
 
-def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions"):
+def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None):
     """Fill an existing 40-slot blank master. Missing slots stay explicitly pending."""
     import base64
     if kind not in {'questions', 'solutions'}: raise ValueError('지원되지 않는 양식 종류')
+    if total_pages is not None and (kind != 'questions' or not 1 <= total_pages <= 999):
+        raise ValueError('전체 쪽 수 보정은 문제지의 1–999쪽만 지원합니다')
     if not title.strip(): raise ValueError('시험지 제목이 필요합니다')
     if output.exists(): raise ValueError('기존 출력은 덮어쓰지 않습니다. 새 출력 경로를 지정하세요')
     if output.resolve() == template.resolve(): raise ValueError('원본 템플릿을 덮어쓸 수 없습니다')
@@ -47,6 +68,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         versions.append({'run': str(run.resolve()), 'candidate_sha256': hashlib.sha256((run / 'candidate.json').read_bytes()).hexdigest()})
     if not items or start < 1 or start + len(items) - 1 > 40: raise ValueError('1–40번 슬롯 범위가 필요합니다')
     if len({(b['exam'], b['subject']) for b in briefs}) != 1: raise ValueError('다른 시험·과목을 한 시험지에 섞을 수 없습니다')
+    shared = shared_layout(items, start) if kind == 'questions' else {}
     output.parent.mkdir(parents=True, exist_ok=True)
     ir = output.with_suffix('.template.json')
     execute('convert', template.resolve(), '--to', 'json', '-o', ir)
@@ -58,6 +80,9 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
     enc = lambda t: base64.b64encode(t.encode()).decode()
     operations = ['R\t'+enc('2026학년도 시대인재 LEET 시험지명 X회')+'\t'+enc(title),
                   'R\t'+enc('추리논증')+'\t'+enc(briefs[0]['subject'])]
+    if kind == 'questions' and briefs[0]['exam'].startswith('psat'):
+        operations.append('R\t'+enc('제2교시')+'\t'+enc('모의고사'))
+    if total_pages is not None: operations.append('N\t'+str(total_pages))
     def op(code, slot, style, value, *extra):
         operations.append('\t'.join([code, str(slot), str(styles[style]), enc(value), *map(str, extra)]))
     if kind == 'solutions':
@@ -74,13 +99,23 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
                 op('T', slot, '정오판단_설명', judgment.explanation)
             if item.commentary: op('T', slot, '코멘트내용 8pt', item.commentary)
             continue
-        op('S', slot, '문제', item.stem)
-        op('P', slot, '박스내용(들여쓰기)', item.passage + ''.join('\n'+t.title+' ('+t.unit+')'+('\n'+t.note if t.note else '') for t in item.tables))
+        group = shared.get(slot)
+        if group and group['first']:
+            a, b = group['pair']
+            op('J', slot, '문제', f'[{a}~{b}] 다음 글과 자료를 읽고 물음에 답하시오.' if item.tables else f'[{a}~{b}] 다음 글을 읽고 물음에 답하시오.')
+            op('Q', slot, '문제', item.stem)
+        else:
+            op('S', slot, '문제', item.stem)
+        if group and not group['first']:
+            op('X', slot, '박스내용(들여쓰기)', '')
+        else:
+            op('P', slot, '박스내용(들여쓰기)', item.passage + ''.join('\n'+t.title+' ('+t.unit+')'+('\n'+t.note if t.note else '') for t in item.tables))
         op('B', slot, '보기내용(내어쓰기)', '\n'.join(item.statements))
         opts = [f'{"①②③④⑤"[o.number-1]} {o.text}' for o in item.options]
-        rows = ['\t'.join(opts[:3]), '\t'.join(opts[3:])] if max(map(len, opts)) < 18 else ['\n'.join(opts[:4]), opts[4]]
+        rows = ['\t'.join(opts[:3]), '\t'.join(opts[3:])] if max(map(len, opts)) < 18 else opts
         op('O', slot, '선택지', '\x1e'.join(rows))
         for table in item.tables:
+            if group and not group['first']: continue
             values = [str(v) for row in [table.columns, *table.rows] for v in row]
             if any('\x1f' in v for v in values): raise ValueError('표 셀에 예약 구분자가 있습니다')
             op('G', slot, '표-가운데', '\x1f'.join(values), len(table.columns))
@@ -109,6 +144,9 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'filled_slots': list(range(start, start+len(items))), 'capacity': 40,
               'answer_key': {str(n): item.answer for n, item in enumerate(items, start)},
               'answer_grid_and_boxes_reread_verified': kind == 'solutions',
+              'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
+              'native_page_count_verified': False,
+              'shared_passage_pairs': [s['pair'] for s in shared.values() if s['first']],
               'figure_count': sum(len(i.figures) for i in items), 'figures_visually_verified': False,
               'unfilled_slots': [i for i in range(1,41) if i not in range(start,start+len(items))],
               'native_hancom_verified': False, 'layout_verified': False, 'delivery_ready': False,

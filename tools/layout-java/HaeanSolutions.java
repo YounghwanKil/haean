@@ -99,7 +99,7 @@ public class HaeanSolutions {
         }
         // The master's sample overall commentary is not an assessment of the new exam.
         ControlTable comment=(ControlTable)s.getParagraph(2).getControlList().stream().filter(c->c instanceof ControlTable).findFirst().orElseThrow();
-        for(Cell c:cells(comment))cell(file,c,"회차 총평 작성 대기",4);
+        for(Cell c:cells(comment))cell(file,c,"모델 검토본 · 전문가 최종 검토 전",4);
         for(var entry:ops.entrySet()) {
             int slot=entry.getKey(),start=starts.get(slot-1),end=slot<40?starts.get(slot):s.getParagraphCount();
             Paragraph heading=s.getParagraph(start);
@@ -111,7 +111,11 @@ public class HaeanSolutions {
             for(String[] f:entry.getValue()) {
                 int style=Integer.parseInt(f[2]);String value=HaeanFill.decode(f[3]);
                 // The master's paragraph numbering supplies the question number.
-                if(f[0].equals("H"))HaeanFill.setText(file,heading,value,style);
+                if(f[0].equals("H")) {
+                    HaeanFill.setText(file,heading,value,style);
+                    heading.getHeader().getDivideSort().setDividePage(false);
+                    heading.getHeader().getDivideSort().setDivideColumn(true);
+                }
                 else if(f[0].equals("A")) {
                     for(int i=0;i<mc.size()-1;i++)if(cellText(mc.get(i)).equals("정답"))cell(file,mc.get(i+1),value,style);
                 } else if(f[0].equals("M")) {

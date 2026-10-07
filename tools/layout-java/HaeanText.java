@@ -46,6 +46,10 @@ public class HaeanText {
         p.getHeader().getDivideSort().setValue((short)breaks);
         p.getHeader().setLastInList(false);
         var shape = file.getDocInfo().getParaShapeList().get(s.getParaShapeId());
+        // Keep short option/statement paragraphs intact; avoid single-line widows in longer prose.
+        shape.getProperty1().setProtectLoner(true);
+        if(s.getHangulName().equals("선택지") || s.getHangulName().equals("보기내용(내어쓰기)") || s.getHangulName().equals("코멘트내용 8pt"))shape.getProperty1().setProtectPara(true);
+        if(s.getHangulName().equals("정오판단_선지"))shape.getProperty1().setTogetherNextPara(true);
         shape.getProperty1().setLineDivideForHangul(LineDivideForHangul.ByWord);
         shape.getProperty1().setLineDivideForEnglish(LineDivideForEnglish.ByWord);
     }
