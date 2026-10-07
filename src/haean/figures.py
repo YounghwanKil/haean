@@ -79,6 +79,7 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
     numeric_option=option and figure.kind!='argument'
     size=(5.2,2.4) if numeric_option else (2.6,2.6) if option else (5.2,3.6)
     fig, ax = plt.subplots(figsize=size, constrained_layout=True)
+    line_labels, label_layout = [], []
     title_pad = 6
     if figure.kind == 'argument':
         from .argument_layout import layout, draw
@@ -98,8 +99,11 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
             else: ax.plot(x, series.values, marker=['o','s','^','D'][index%4],
                           linestyle=['-','--',':','-.'][index%4], color='black', label=series.name)
             if getattr(figure,'show_values',False):
-                for xpos,value in zip(points,series.values):
-                    ax.annotate(f'{value:g}',(xpos,value),xytext=(0,5),textcoords='offset points',ha='center',fontsize=12 if numeric_option else 10)
+                for category, (xpos,value) in enumerate(zip(points,series.values)):
+                    if figure.kind == 'line':
+                        line_labels.append((index, category, xpos, value))
+                    else:
+                        ax.annotate(f'{value:g}',(xpos,value),xytext=(0,5),textcoords='offset points',ha='center',fontsize=12 if numeric_option else 10)
         ax.set_xticks(x, figure.categories); ax.set_xlabel(figure.x_label,fontsize=12 if numeric_option else 10); ax.set_ylabel(figure.y_label,fontsize=12 if numeric_option else 10)
         ax.tick_params(labelsize=12 if numeric_option else 10)
         if numeric_option:
@@ -119,10 +123,14 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
     if figure.note and figure.kind != 'argument':
         import textwrap
         fig.supxlabel('\n'.join(textwrap.wrap(figure.note, 58)), fontsize=8)
+    if line_labels:
+        from .chart_labels import place_line_labels
+        label_layout = place_line_labels(fig, ax, line_labels, 12 if numeric_option else 10)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=220); fig.savefig(out.with_suffix('.svg')); plt.close(fig)
     receipt = {'figure': figure.model_dump(), 'png': str(out), 'sha256': hashlib.sha256(out.read_bytes()).hexdigest(),
                'visual_verified': False, 'geometry': geometry, 'font': font,
+               'value_label_layout': label_layout,
                'nonprinted_layout_note': getattr(figure,'layout_note','') or (figure.note if figure.kind == 'argument' else None),
                'note': '지지: 실선 화살표, 반박: 점선 막대 끝. 서로 다른 결합점은 별도 점. 시각 검토 전.'}
     out.with_suffix('.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2))

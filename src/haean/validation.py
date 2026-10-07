@@ -70,8 +70,11 @@ def validate(draft: Draft, brief: Brief, allowed_sources: set[str], item_specs=N
         targets = [j.target for j in item.judgments]
         if any(str(n) not in targets for n in range(1, 6)):
             errors.append(prefix + "1~5번 선지별 판단 누락")
-        if brief.subject == "자료해석" and (not item.tables or not item.calculations):
-            errors.append(prefix + "자료해석 표 또는 재계산 명세 누락")
+        numeric_source = any(f.kind in {'bar', 'line'} and
+                             f.placement in {'passage', 'statements'}
+                             for f in item.figures)
+        if brief.subject == "자료해석" and (not (item.tables or numeric_source) or not item.calculations):
+            errors.append(prefix + "자료해석 표·수치 그래프 또는 재계산 명세 누락")
         for calc in item.calculations:
             try:
                 if arithmetic(calc.expression) != arithmetic(calc.expected):
