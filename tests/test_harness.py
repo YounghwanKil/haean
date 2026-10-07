@@ -134,3 +134,21 @@ def test_setup_links_are_idempotent_and_preserve_existing(tmp_path):
     assert target.resolve()==source
     occupied=tmp_path/'occupied';occupied.mkdir()
     with pytest.raises(ValueError):module.link_skill(source,occupied)
+
+
+def test_psat_review_profiles_route_without_author_metadata():
+    from haean.models import Brief
+    from haean.pipeline import review_prompt, prompt
+    profiles = {}
+    for subject in ['언어논리','자료해석','상황판단']:
+        for exam in ['psat5','psat7']:
+            brief=Brief(exam=exam,subject=subject,item_type='AUTHOR_SECRET_TYPE',topic='AUTHOR_SECRET_TOPIC')
+            text=review_prompt('blind',brief)
+            assert 'AUTHOR_SECRET' not in text
+            assert ('40문항' if exam=='psat5' else '25문항') in text
+            profiles[exam,subject]=text
+            assert review_prompt('editor',brief).startswith(prompt('editor'))
+    assert len(set(profiles.values()))==6
+    leet=Brief(exam='leet',subject='추리논증',item_type='조건',topic='시험')
+    assert review_prompt('blind',leet)==prompt('blind')
+    with pytest.raises(ValueError):review_prompt('generate',leet)

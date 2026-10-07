@@ -8,7 +8,7 @@ import sys
 from .corpus import Corpus, nfc
 from .models import Brief, Draft, BlindReview, EditorialReview
 from .planning import blueprint
-from .pipeline import prepare, run_pipeline, save, feedback, prompt
+from .pipeline import prepare, run_pipeline, save, feedback, prompt, review_prompt
 from .codex_runtime import CodexProvider
 from .validation import validate, public_item, review_gate, similarity
 from .export import export_review
@@ -143,6 +143,7 @@ def main():
     p.add_argument("--kind", choices=["questions", "solutions"], default="questions")
     p.add_argument("--total-pages", type=int, help="한글 렌더에서 확인한 문제지 전체 쪽 수로 바탕쪽 분모 보정; 재렌더 확인 필요")
     p.add_argument("--page-start", type=int, action="append", default=[], help="해당 문제를 새 쪽에서 시작; 실제 배치 검토 후 지정, 반복 가능")
+    p.add_argument("--exam-size", type=int, choices=[25, 40], help="전체 회차 슬롯 수; 정확한 문항 수 필요, 25는 PSAT7 전용")
     p = sub.add_parser("layout-package")
     p.add_argument("run", type=Path)
     p.add_argument("--question-template", type=Path, required=True)
@@ -205,7 +206,7 @@ def dispatch(a):
         return role_packet(a.name)
     if a.command == "layout-fill":
         from .hwp import fill_template
-        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind, a.total_pages, a.page_start)
+        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind, a.total_pages, a.page_start, a.exam_size)
     if a.command == "layout-package":
         from .layout import package
         return package(a.run, a.question_template, a.solution_template)
@@ -220,7 +221,8 @@ def dispatch(a):
     if a.command == "blind":
         payload = json.loads((a.run / "blind-input.json").read_text())
         provider = CodexProvider(a.model, trace_dir=a.run / "codex-traces")
-        result = provider.call("blind", prompt("blind"), payload, BlindReview)
+        brief = Brief.model_validate_json((a.run / "brief.json").read_text())
+        result = provider.call("blind", review_prompt("blind", brief), payload, BlindReview)
         save(a.run / "blind-result.json", result.model_dump())
         save(a.run / "blind-usage.json", provider.usage)
         return {"result": str(a.run / "blind-result.json")}
@@ -248,8 +250,8 @@ def dispatch(a):
             save(a.run / "blind-input.json", {"items": [public_item(i) for i in draft.items]})
             save(a.run / "blind.schema.json", BlindReview.model_json_schema())
             save(a.run / "editorial.schema.json", EditorialReview.model_json_schema())
-            (a.run / "blind-instructions.md").write_text(prompt("blind"))
-            (a.run / "editorial-instructions.md").write_text(prompt("editor"))
+            (a.run / "blind-instructions.md").write_text(review_prompt("blind", brief))
+            (a.run / "editorial-instructions.md").write_text(review_prompt("editor", brief))
             state = "needs_revision" if errors else "awaiting_independent_review"
         else:
             blind = BlindReview.model_validate_json(a.blind.read_text())

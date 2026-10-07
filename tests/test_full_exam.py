@@ -68,12 +68,16 @@ def test_relative_output_assembles_and_exports_in_item_order(tmp_path, draft, br
     (run/'status.json').write_text(json.dumps({'state':'awaiting_human_review',
         'candidate_sha256':hashlib.sha256((run/'candidate.json').read_bytes()).hexdigest()}))
     (run.parent/'plan.json').write_text(json.dumps({'exam':'leet','subject':'추리논증',
-        'slots':[{'id':'TEST-001','number':1,'item_type':'조건 추론'}]}))
+        'slots':[{'id':'TEST-001','number':1,'item_type':'조건 추론','difficulty':'하','topic':'개별 배정'}]}))
     (run.parent/'production.json').write_text(json.dumps({'jobs':[{'run':str(run),'bundle':1,'ids':['TEST-001']}]}))
     monkeypatch.chdir(tmp_path)
     result=assemble('production')
     assert result['ready_for_human_review']
     assert (run.parent/'questions.html').exists() and (run.parent/'solutions.html').exists()
+
+    item_brief=json.loads((run.parent/'items/01/brief.json').read_text())
+    assert item_brief['difficulty']=='하' and item_brief['topic']=='개별 배정'
+    assert json.loads((run/'brief.json').read_text())['difficulty']=='중'
 
 
 def test_shared_layout_requires_same_adjacent_passage(draft):

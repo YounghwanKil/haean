@@ -137,6 +137,10 @@ def assemble(out):
         view = out/'items'/f"{slot['number']:02d}"; view.mkdir(parents=True, exist_ok=True)
         save(view/'candidate.json', {'design_summary': '회차 검토 묶음에서 분리한 편집 뷰', 'items': [item.model_dump()]})
         brief = json.loads((parent/'brief.json').read_text()); brief.update(count=1, shared_passage=False)
+        # A mixed bundle's common brief must not replace this slot's assignment.
+        for field in ('difficulty', 'item_type', 'topic'):
+            if field in slot:
+                brief[field] = slot[field]
         save(view/'brief.json', brief)
         state = {**source_state, 'parent_review_run': str(parent), 'human_approved': False,
                  'candidate_sha256': hashlib.sha256((view/'candidate.json').read_bytes()).hexdigest(),

@@ -1,6 +1,6 @@
 ---
 name: haean
-description: 팀 해안의 LEET 추리논증·PSAT 5급/7급 출제, 검토, 수정, 모의고사 구성과 팀 피드백을 총괄한다. 해안 작업 요청이나 $haean 호출에 사용한다.
+description: 팀 해안의 LEET 추리논증·PSAT 5급/7급 출제·검토·모의고사와 언어이해 파일럿, 팀 피드백을 총괄한다. 해안 작업 요청이나 $haean 호출에 사용한다.
 ---
 
 # 해안 총괄
@@ -13,7 +13,8 @@ description: 팀 해안의 LEET 추리논증·PSAT 5급/7급 출제, 검토, 수
 
 | 요청 | 읽을 스킬 | 담당 역할 |
 |---|---|---|
-| LEET 문항 작성·수정 | `../haean-leet/SKILL.md` | haean_leet_writer |
+| LEET 언어이해 파일럿 | `../haean-reading/SKILL.md` | 별도 출제자 + 독립 풀이·편집 검토 |
+| LEET 추리논증 작성·수정 | `../haean-leet/SKILL.md` | haean_leet_writer |
 | PSAT 문항 작성·수정 | `../haean-psat/SKILL.md` | haean_psat_writer |
 | 오류 검토·윤문·해설 확인 | `../haean-review/SKILL.md` | haean_blind_solver, haean_editor |
 | 회차 구성·물량 검토 | `../haean-exam/SKILL.md` | haean_assembler |

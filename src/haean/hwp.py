@@ -52,7 +52,7 @@ def java_tool(name, *args):
     if p.returncode: raise RuntimeError(p.stderr[-3000:])
 
 
-def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None):
+def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None, exam_size=None):
     """Fill an existing 40-slot blank master. Missing slots stay explicitly pending."""
     import base64
     if kind not in {'questions', 'solutions'}: raise ValueError('지원되지 않는 양식 종류')
@@ -68,6 +68,11 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         versions.append({'run': str(run.resolve()), 'candidate_sha256': hashlib.sha256((run / 'candidate.json').read_bytes()).hexdigest()})
     if not items or start < 1 or start + len(items) - 1 > 40: raise ValueError('1–40번 슬롯 범위가 필요합니다')
     if len({(b['exam'], b['subject']) for b in briefs}) != 1: raise ValueError('다른 시험·과목을 한 시험지에 섞을 수 없습니다')
+    if exam_size is not None:
+        if exam_size not in {25, 40} or start != 1 or len(items) != exam_size:
+            raise ValueError('회차 크기는 25/40이며 1번부터 정확한 문항 수가 필요합니다')
+        if exam_size == 25 and briefs[0]['exam'] != 'psat7':
+            raise ValueError('25문항 양식은 PSAT 7급에 사용합니다')
     shared = shared_layout(items, start) if kind == 'questions' else {}
     page_starts = sorted(set(page_starts or []))
     if page_starts and (kind != 'questions' or any(n <= 1 or n < start or n >= start+len(items) for n in page_starts)):
@@ -87,6 +92,8 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
                   'R\t'+enc('추리논증')+'\t'+enc(briefs[0]['subject'])]
     if kind == 'questions' and briefs[0]['exam'].startswith('psat'):
         operations.append('R\t'+enc('제2교시')+'\t'+enc('모의고사'))
+    if exam_size == 25:
+        operations.extend(['C\t25', 'R\t'+enc('40문항')+'\t'+enc('25문항')])
     if total_pages is not None: operations.append('N\t'+str(total_pages))
     def op(code, slot, style, value, *extra):
         operations.append('\t'.join([code, str(slot), str(styles[style]), enc(value), *map(str, extra)]))
@@ -149,7 +156,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
     result = {'engine': 'hwplib 1.1.11', 'template': str(template.resolve()),
               'template_sha256': hashlib.sha256(template.read_bytes()).hexdigest(), 'inputs': versions,
               'hwp': str(output), 'kind': kind, 'title': title, 'subject': briefs[0]['subject'],
-              'filled_slots': list(range(start, start+len(items))), 'capacity': 40,
+              'filled_slots': list(range(start, start+len(items))), 'capacity': exam_size or 40, 'template_capacity': 40,
               'answer_key': {str(n): item.answer for n, item in enumerate(items, start)},
               'answer_grid_and_boxes_reread_verified': kind == 'solutions',
               'editorial_commentary_included': False,
@@ -158,8 +165,8 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'native_page_count_verified': False,
               'shared_passage_pairs': [s['pair'] for s in shared.values() if s['first']],
               'figure_count': sum(len(i.figures) for i in items), 'figures_visually_verified': False,
-              'unfilled_slots': [i for i in range(1,41) if i not in range(start,start+len(items))],
+              'unfilled_slots': [i for i in range(1,(exam_size or 40)+1) if i not in range(start,start+len(items))],
               'native_hancom_verified': False, 'layout_verified': False, 'delivery_ready': False,
-              'note': '기존 40문항 양식에 내용 삽입. 미작성 슬롯은 남아 있으며 7급 25문항/브릿지20 회차 확정본이 아님.'}
+              'note': ('25문항 회차로 불필요한 슬롯 제거. 실제 한글 배치·쪽수 검증 전 검토본.' if exam_size == 25 else '기존 40문항 양식에 내용 삽입. 미작성 슬롯과 실제 한글 배치를 확인할 것.')}
     save(output.with_suffix('.receipt.json'), result)
     return result

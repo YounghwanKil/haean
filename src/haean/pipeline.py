@@ -20,6 +20,19 @@ def prompt(name):
     return files("haean").joinpath("prompts", name + ".md").read_text(encoding="utf-8")
 
 
+def review_prompt(role, brief):
+    """Production review specialization; only exam/subject enter blind instructions."""
+    if role not in {"blind", "editor"}:
+        raise ValueError("지원되지 않는 검토 역할")
+    result = prompt(role)
+    if brief.exam in {"psat5", "psat7"}:
+        profile = {"언어논리": "verbal", "자료해석": "data", "상황판단": "situation"}[brief.subject]
+        result += "\n" + prompt("review_psat_" + profile)
+        result += "\n시험 명세: " + ("PSAT 5급, 과목당 40문항." if brief.exam == "psat5" else "PSAT 7급, 과목당 25문항.")
+        result += " 급수만으로 난도를 단정하지 말고 문면의 추론 단계와 계산·독해 부담을 근거로 평가한다."
+    return result
+
+
 def writer_prompt(brief):
     result = prompt("haean") + "\n" + prompt("leet" if brief.exam == "leet" else "psat")
     if brief.exam == "leet" and "논증" in brief.item_type and "구조" in brief.item_type:
@@ -84,8 +97,8 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
             errors = validate(draft, brief, allowed, context.get('exam_assignment'))
             hits = similarity(draft, context["references"])
             if hits: errors.append("참고자료와 긴 문구가 겹칩니다. 독창성 검토 필요.")
-            blind = provider.call("blind", prompt("blind"), {"items": [public_item(i) for i in draft.items]}, BlindReview)
-            editorial = provider.call("editor", prompt("editor"),
+            blind = provider.call("blind", review_prompt("blind", brief), {"items": [public_item(i) for i in draft.items]}, BlindReview)
+            editorial = provider.call("editor", review_prompt("editor", brief),
                                       {"brief": brief.model_dump(), "draft": draft.model_dump(),
                                        "blind": blind.model_dump(), "references": context["references"],
                                        "mechanical_errors": errors,

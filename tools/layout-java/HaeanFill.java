@@ -147,6 +147,7 @@ public class HaeanFill {
             if(t.matches("[0-9]+\\.첫줄발문.*")) starts.put(Integer.parseInt(t.substring(0,t.indexOf('.'))),i);
         }
         if(starts.size()!=40)throw new IllegalStateException("Requires supplied 40-slot blank question template; refusal prevents old questions being carried forward");
+        boolean trimmed25 = false;
         Set<Paragraph> remove = Collections.newSetFromMap(new IdentityHashMap<>());
         Map<Paragraph,List<Paragraph>> insertAfter = new IdentityHashMap<>();
         for(var entry:starts.entrySet()) {
@@ -156,6 +157,12 @@ public class HaeanFill {
         for(String line:Files.readAllLines(Path.of(args[1]),StandardCharsets.UTF_8)) {
             String[] f=line.split("\\t",-1);
             if(f[0].equals("R")) { for(Section sec:file.getBodyText().getSectionList())replaceInList(file,sec,decode(f[1]),decode(f[2]));continue; }
+            if(f[0].equals("C")) {
+                if(!f[1].equals("25"))throw new IllegalArgumentException("Only 25-slot trimming supported");
+                for(int i=starts.get(26);i<s.getParagraphCount();i++)remove.add(s.getParagraph(i));
+                trimmed25 = true;
+                continue;
+            }
             if(f[0].equals("N")) {
                 int total=Integer.parseInt(f[1]);if(total<1 || total>999)throw new IllegalArgumentException("Invalid page total");
                 int changed=0;
@@ -292,6 +299,7 @@ public class HaeanFill {
             }
             if(remove.contains(p))s.deleteParagraph(i);
         }
+        if(trimmed25)s.getParagraph(s.getParagraphCount()-1).getHeader().setLastInList(true);
         var caret=file.getDocInfo().getDocumentProperties().getCaretPosition();
         caret.setListID(0);caret.setParagraphID(0);caret.setPositionInParagraph(0);
         HWPWriter.toFile(file,args[2]);
