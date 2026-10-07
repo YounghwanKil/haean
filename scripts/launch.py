@@ -24,7 +24,8 @@ def codex_command(codex, task, madmax=False):
     command = [codex, "-C", str(ROOT), "-m", "gpt-6-astra",
                "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS)]
     if madmax:
-        command.append("--dangerously-bypass-approvals-and-sandbox")
+        command.extend(["--dangerously-bypass-approvals-and-sandbox",
+                        "-c", "projects." + json.dumps(str(ROOT)) + '.trust_level="trusted"'])
     return command + ["$haean " + task]
 
 
