@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" viewBox="0 0 860 470" role="img" aria-labelledby="title desc">
+<title id="title">해안 출제·검토·개선 순환</title>
+<desc id="desc">해안 총괄에서 출제, 독립 풀이, 편집 검토, 고정 평가와 전문가 의견, 실패 기록, 개선 가설, 동일 조건 비교, 채택·보류·기각 기록을 거쳐 총괄로 돌아갑니다.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9" fill="#38a7d5"/></marker></defs>
+<rect width="860" height="470" rx="18" fill="#0d1825"/>
+<path d="M270 90 H310" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M530 90 H570" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M685 130 V175" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M580 225 H540" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M320 225 H280" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M165 265 V310" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M270 360 H310" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M530 360 H570" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M790 360 H825 V440 H25 V90 H50" fill="none" stroke="#38a7d5" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="60" y="50" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="75" y="73" fill="#7dd3fc" font-family="sans-serif" font-size="12">01</text>
+<text x="172" y="97.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">해안 총괄</text>
+<rect x="320" y="50" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="335" y="73" fill="#7dd3fc" font-family="sans-serif" font-size="12">02</text>
+<text x="432" y="97.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">LEET / PSAT 출제</text>
+<rect x="580" y="50" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="595" y="73" fill="#7dd3fc" font-family="sans-serif" font-size="12">03</text>
+<text x="692" y="85.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">새 컨텍스트</text>
+<text x="692" y="109.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">독립 풀이</text>
+<rect x="580" y="185" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="595" y="208" fill="#7dd3fc" font-family="sans-serif" font-size="12">04</text>
+<text x="692" y="220.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">편집 검토</text>
+<text x="692" y="244.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">필요시 수정</text>
+<rect x="320" y="185" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="335" y="208" fill="#7dd3fc" font-family="sans-serif" font-size="12">05</text>
+<text x="432" y="220.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">고정 평가</text>
+<text x="432" y="244.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">전문가 의견</text>
+<rect x="60" y="185" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="75" y="208" fill="#7dd3fc" font-family="sans-serif" font-size="12">06</text>
+<text x="172" y="220.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">실패 원문과</text>
+<text x="172" y="244.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">실행 기록</text>
+<rect x="60" y="320" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="75" y="343" fill="#7dd3fc" font-family="sans-serif" font-size="12">07</text>
+<text x="172" y="355.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">개선 가설</text>
+<text x="172" y="379.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">후보 패치</text>
+<rect x="320" y="320" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="335" y="343" fill="#7dd3fc" font-family="sans-serif" font-size="12">08</text>
+<text x="432" y="367.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">동일 조건 비교</text>
+<rect x="580" y="320" width="210" height="80" rx="10" fill="#162b40" stroke="#3f6584"/>
+<text x="595" y="343" fill="#7dd3fc" font-family="sans-serif" font-size="12">09</text>
+<text x="692" y="355.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">채택·보류·기각</text>
+<text x="692" y="379.0" text-anchor="middle" fill="#edf6fc" font-family="Apple SD Gothic Neo, Noto Sans CJK KR, sans-serif" font-size="17">기록</text>
+</svg>
