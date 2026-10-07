@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/haean-mascot-v1.png" width="240" alt="책을 읽는 파도, 해안 마스코트"></p>
+<p align="center"><img src="assets/haean-mascot-v2.png" width="240" alt="책을 읽는 파도, 해안 마스코트"></p>
 
 # haean — 해안 전용 Codex 하네스
 
@@ -214,4 +214,4 @@ GitHub 저장소는 공개되어 누구나 클론할 수 있습니다. 팀 원�
 
 `haean` 또는 `haean --madmax`로 진입하면 책을 읽는 파도 마스코트와 실행 모드·선택 스킬이 담긴 환영 카드를 표시한 뒤 Codex로 이어집니다. `haean banner`는 모델 호출 없이 시작 화면만 보여주며, `haean banner --madmax`로 모드 표시도 확인할 수 있습니다. 좁은 창은 작은 로고로 전환하고 `NO_COLOR=1`이면 색을 끕니다. 대화형 터미널에서는 큰 HAEAN 글자를 먼저 약 1.5초 보여준 다음, 그 아래 마스코트 카드를 한 줄씩 표시하고 잠깐 머무릅니다. 전체 시작 연출은 약 3초이며 두 로고 모두 스크롤 기록에 남습니다. `HAEAN_NO_ANIMATION=1 haean`으로 지연을 끌 수 있습니다. 런처가 별도 화면을 열어 기존 셸 출력을 가리고 그 안에 로고와 Codex를 표시합니다. 종료하면 원래 셸 화면으로 돌아옵니다. 로고는 상단 고정 헤더가 아니며 대화가 길어지면 화면 위로 밀립니다. tmux가 설치돼 있고 tmux 밖에서 실행하면 별도 세션 하단에 파란색 `haean` 바를 추가합니다. Codex의 모델·컨텍스트·사용량은 그 위의 기본 상태줄에 유지합니다. `HAEAN_NO_TMUX=1 haean`은 별도 하단 바를 끕니다. 기존 tmux 안에서는 그 환경의 배치를 보존하고 별도 바를 추가하지 않습니다. 해안이 만든 tmux에서 detach하면 해당 실행도 종료됩니다. macOS에서 tmux 설치는 `brew install tmux`입니다.
 
-시작 화면은 책을 읽는 파도 마스코트와 환영 카드입니다. PNG 로고는 `assets/haean-mascot-v1.png`, 터미널용 블록 그림은 `scripts/branding.py`에 있습니다. 터미널에서는 이미지 프로토콜 없이 문자와 ANSI 색으로 표시하며, 색을 끄거나 창이 좁으면 간단한 문자 그림을 사용합니다.
+시작 화면은 책을 읽는 파도 마스코트와 환영 카드입니다. PNG 로고는 `assets/haean-mascot-v2.png`, 터미널용 블록 그림은 `scripts/branding.py`에 있습니다. 터미널에서는 이미지 프로토콜 없이 문자와 ANSI 색으로 표시하며, 색을 끄거나 창이 좁으면 간단한 문자 그림을 사용합니다.
