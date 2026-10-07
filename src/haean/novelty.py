@@ -117,5 +117,8 @@ def audit(candidates, previous, limit=5):
         for hit in hits:
             unique.setdefault((hit['previous_exam'], hit['previous_id']), hit)
         hits = list(unique.values())
-        outputs.append({'item_id': item['id'], 'exam': row['exam'], 'subject': row['subject'], 'candidate_sha256': row['sha256'], 'source': row['source'], 'neighbors': hits[:limit], 'flagged_neighbor_count': sum(x['review_candidate'] for x in hits)})
+        # The display limit must not hide a threshold-triggered review candidate.
+        neighbors = [hit for index, hit in enumerate(hits)
+                     if index < limit or hit['review_candidate']]
+        outputs.append({'item_id': item['id'], 'exam': row['exam'], 'subject': row['subject'], 'candidate_sha256': row['sha256'], 'source': row['source'], 'neighbors': neighbors, 'flagged_neighbor_count': sum(x['review_candidate'] for x in hits)})
     return {'version': 1, 'candidate_count': len(candidates), 'history_versions': len(previous), 'history_items': len({(x['exam'], x['subject'], x['item']['id']) for x in previous}), 'items': outputs, 'originality_verified': False, 'method': 'numeric/letter-normalized character shingles over passage, reasoning and options; candidate retrieval only', 'limitations': ['Semantic paraphrases and renamed logic structures can evade this check.', 'Same question type is not itself duplication. A reviewer must compare premises, decisive inference and distractor roles.', 'Stable item IDs identify revisions; genuinely new questions require new IDs.', 'This is a snapshot audit, not evidence from 100 sequential generations.']}

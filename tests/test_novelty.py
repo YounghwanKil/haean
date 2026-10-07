@@ -36,6 +36,18 @@ def test_same_type_short_labels_do_not_establish_repeat():
     assert not audit([b],[a])['items'][0]['neighbors'][0]['review_candidate']
 
 
+def test_display_limit_does_not_hide_flagged_questions():
+    previous = [row(f'old-{n}', n + 1) for n in range(8)]
+    # A second version of one lineage must not become a ninth question.
+    previous.append(row('old-0', 999))
+    result = audit([row('new', 200)], previous, limit=2)['items'][0]
+    assert result['flagged_neighbor_count'] == 8
+    assert {hit['previous_id'] for hit in result['neighbors']} == {
+        f'old-{n}' for n in range(8)
+    }
+    assert len(result['neighbors']) == 8
+
+
 def test_old_question_remains_searchable_after_100_other_items(tmp_path):
     import random
     rng = random.Random(42)
