@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="220" viewBox="0 0 820 220" role="img" aria-labelledby="title desc">
+  <title id="title">haean — 해안</title>
+  <desc id="desc">바다와 해안을 나타내는 청록색 물결 세 줄과 해안 이름</desc>
+  <rect width="820" height="220" rx="28" fill="#102c36"/>
+  <g fill="none" stroke="#6ed4c2" stroke-width="9" stroke-linecap="round">
+    <path d="M50 78c26-24 43 24 69 0s43 24 69 0"/>
+    <path d="M50 110c26-24 43 24 69 0s43 24 69 0"/>
+    <path d="M50 142c26-24 43 24 69 0s43 24 69 0"/>
+  </g>
+  <text x="234" y="119" fill="#f4f8f6" font-family="system-ui,sans-serif" font-size="76" font-weight="650" letter-spacing="-3">haean</text>
+  <text x="485" y="118" fill="#6ed4c2" font-family="system-ui,sans-serif" font-size="36">해안</text>
+  <text x="239" y="159" fill="#bbced0" font-family="system-ui,sans-serif" font-size="17" letter-spacing="2">LEET · PSAT · CODEX HARNESS</text>
+</svg>

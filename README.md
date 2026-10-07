@@ -1,3 +1,5 @@
+![haean — 해안](assets/haean-logo.svg)
+
 # haean — 해안 전용 Codex 하네스
 
 **Codex에 ChatGPT 계정으로 로그인한 팀원이 Astra와 함께 쓰는 출제 작업 환경**입니다. `$haean`이 자료 조사, LEET·PSAT 출제, 한국어 윤문, 독립 풀이, 편집 검토, 회차 구성, 평가·개선 실험을 조율합니다. API 키나 별도 LLM 서버를 설정하지 않습니다.
@@ -7,8 +9,8 @@
 ```bash
 gh repo clone YounghwanKil/haean
 cd haean
-./haean setup
-./haean doctor
+./install.sh
+haean doctor
 ```
 
 Python 3.11+, Git, Codex CLI가 필요합니다. `codex login`으로 ChatGPT 로그인합니다. `setup`은 프로젝트 안에 스킬 링크·Python 가상환경을 설치하고, 고정된 im-not-ai submodule을 가져옵니다. 전역 Codex 설정·계정 인증·권한을 덮어쓰지 않습니다. 현재 런처는 macOS/Linux용입니다.
@@ -146,3 +148,24 @@ LEET·PSAT 자료해석 샘플의 한글 열기와 내용 배치를 확인했습
 ```
 
 [팀 작업법](docs/WORKFLOW.md), [품질 게이트](docs/QUALITY.md)를 참고하세요. 실행·수정·검토·점수와 미완료 범위를 남기며, 테스트 통과와 실제 전문가 품질 검증을 구분합니다.
+
+## 해안 명령·로고·상태 표시
+
+`./install.sh`를 한 번 실행하면 `~/.local/bin/haean`에 이 저장소를 가리키는 실행 명령을 등록합니다. 이후 어느 폴더에서나 `haean "작업 요청"`으로 같은 해안 작업 환경을 엽니다. 기존 동명 명령은 덮어쓰지 않으며, 다른 위치는 `./install.sh --bin-dir /원하는/폴더`로 지정합니다. Python 경로 지정은 `HAEAN_PYTHON=python3.13 ./install.sh`를 사용합니다.
+
+```bash
+haean --help
+haean --version
+haean status
+haean doctor
+```
+
+CLI 시작 시 해안 물결 로고를 표시합니다. 하단에는 Codex의 실제 모델·현재 폴더·남은 컨텍스트·5시간/주간 사용량을 표시합니다. 런처가 실행별 `-c tui.status_line=…` 설정을 전달하고, 프로젝트 설정에도 같은 기본값을 제공합니다. 사용량 정보는 Codex가 제공할 때 표시됩니다. 전역 설정이나 앱 UI를 변경하지 않습니다. [공식 status_line 설정](https://learn.chatgpt.com/docs/config-file/config-reference)을 사용하며 런처 항목은 `scripts/launch.py`의 `STATUS_ITEMS`에서 조정할 수 있습니다. Codex 0.160.1에서는 `-c`를 쓴 세션이 공용 백그라운드 서버 대신 내장 모드로 실행된다는 시작 알림이 표시됩니다.
+
+`haean status`는 로컬 문항 검토 상태를 읽으며 분리된 회차 편집 뷰는 중복 집계하지 않습니다. 과거 수정 실행은 포함되므로 현행 회차 수나 살아 있는 프로세스 수가 아닙니다. 모델 검토 대기/통과와 전문가 승인을 구분합니다.
+
+해제는 설치에 쓴 저장소에서 `./install.sh --uninstall`을 실행합니다. 다른 경로에 설치했다면 같은 `--bin-dir`를 지정합니다. 이 설치기가 만든 실행 명령만 지우고 원문·실행 기록·저장소·Codex 설정은 보존합니다. 저장소를 이동했거나 Python 경로가 바뀌어 기존 명령과 일치하지 않으면 덮어쓰지 않고 중단합니다.
+
+현재 GitHub 저장소는 비공개이므로 초대받은 팀원의 GitHub 접근 권한이 필요합니다. 설치 자동화가 저장소의 공개 범위를 바꾸지는 않습니다. Windows에서는 WSL을 사용하세요.
+
+첫 실행에서 Codex가 프로젝트 신뢰를 요청하면 저장소 내용을 확인한 뒤 직접 선택하세요. 신뢰하지 않은 프로젝트의 스킬은 발견되어도 `.codex`의 역할·MCP 설정은 비활성화될 수 있습니다. 설치기는 전역 신뢰 목록이나 권한을 바꾸지 않습니다. `doctor`의 역할 `valid`는 파일 검증이며 현재 세션에서 역할이 로딩됐다는 증거는 아닙니다.

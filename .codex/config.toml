@@ -6,3 +6,6 @@ max_concurrent_threads_per_session = 3
 [mcp_servers.haean_hwp]
 command = "python3"
 args = ["scripts/hwp_mcp.py"]
+
+[tui]
+status_line = ["model-with-reasoning", "current-dir", "context-remaining", "five-hour-limit", "weekly-limit"]
