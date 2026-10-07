@@ -10,6 +10,7 @@ def test_madmax_is_explicit_and_task_is_single_argument():
     normal = launch.codex_command('codex', task)
     madmax = launch.codex_command('codex', task, True)
     flag = '--dangerously-bypass-approvals-and-sandbox'
+    assert normal.count("--no-alt-screen") == madmax.count("--no-alt-screen") == 1
     assert flag not in normal
     assert madmax.count(flag) == 1
     assert normal[-1] == madmax[-1] == '$haean ' + task

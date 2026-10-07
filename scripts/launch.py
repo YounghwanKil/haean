@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_ITEMS = ["model-with-reasoning", "current-dir", "context-remaining", "five-hour-limit", "weekly-limit"]
@@ -24,6 +25,7 @@ LOGO = (
 
 
 def banner(madmax=False, *, large=False, skill="haean"):
+    animate = large and sys.stdout.isatty() and os.environ.get("TERM") != "dumb" and os.environ.get("HAEAN_NO_ANIMATION") != "1"
     color = sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
     accent = "\033[36;1m" if color else ""
     reset = "\033[0m" if color else ""
@@ -32,7 +34,9 @@ def banner(madmax=False, *, large=False, skill="haean"):
     print()
     if large and width >= max(map(len, LOGO)) + 4:
         for row in LOGO:
-            print(f"{accent}  {row}{reset}")
+            print(f"{accent}  {row}{reset}", flush=True)
+            if animate:
+                time.sleep(0.12)
         print(f"{accent}  ≋≋≋  H A E A N  /  해안{reset}")
     else:
         print(f"{accent}  ≋≋≋  H A E A N  ·  해안{reset}")
@@ -43,6 +47,8 @@ def banner(madmax=False, *, large=False, skill="haean"):
         print("  출제 → 독립 풀이 → 검토·수정 → 한글 출력")
         print("  자연어로 요청하세요.  스킬 목록: haean skills")
     print(flush=True)
+    if animate:
+        time.sleep(0.8)
 
 
 def skill_catalog():
@@ -90,7 +96,7 @@ def show_skills(name=None):
 
 
 def codex_command(codex, task, madmax=False, skill="haean"):
-    command = [codex, "-C", str(ROOT), "-m", "gpt-6-astra",
+    command = [codex, "--no-alt-screen", "-C", str(ROOT), "-m", "gpt-6-astra",
                "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS)]
     if madmax:
         command.append("--dangerously-bypass-approvals-and-sandbox")
