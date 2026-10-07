@@ -161,6 +161,18 @@ def main():
         p.add_argument('--catalog', type=Path, default=Path('data/generated.sqlite'))
         if command == 'novelty-check':
             p.add_argument('--out', type=Path, required=True)
+    for command in ('novelty-memory', 'novelty-get'):
+        p = sub.add_parser(command, help='생성 기억 색인 조회·선택 문항 원문 회수')
+        p.add_argument('--catalog', type=Path, default=Path('data/generated.sqlite'))
+        p.add_argument('--exam', required=True, choices=['leet', 'psat5', 'psat7'])
+        p.add_argument('--subject', required=True)
+        p.add_argument('--out', type=Path)
+        if command == 'novelty-memory':
+            p.add_argument('--offset', type=int, default=0)
+            p.add_argument('--limit', type=int, default=40)
+        else:
+            p.add_argument('--item', action='append', required=True)
+            p.add_argument('--all-versions', action='store_true')
     args = parser.parse_args()
     try:
         result = dispatch(args)
@@ -175,6 +187,15 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command in {'novelty-memory', 'novelty-get'}:
+        from . import novelty
+        if a.command == 'novelty-memory':
+            result = novelty.memory_index(a.catalog, a.exam, a.subject, a.offset, a.limit)
+        else:
+            result = novelty.memory_get(a.catalog, a.exam, a.subject, a.item, a.all_versions)
+        if a.out:
+            save(a.out, result)
+        return result
     if a.command in {'novelty-index', 'novelty-check'}:
         from . import novelty
         rows = novelty.records(a.runs)

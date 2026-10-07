@@ -68,6 +68,62 @@ def history(path):
                 for e, s, p, h, f in db.execute('SELECT exam,subject,payload,sha,source FROM versions ORDER BY recorded,sha')]
 
 
+def memory_index(path, exam, subject, offset=0, limit=40):
+    """Verbatim planning index; it is neither a full read nor semantic retrieval."""
+    if offset < 0 or not 1 <= limit <= 200:
+        raise ValueError('offset must be nonnegative and limit must be 1..200')
+    path = Path(path)
+    rows = []
+    if path.exists():
+        with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as db:
+            rows = db.execute('''SELECT v.payload,v.sha,v.source FROM current c
+                JOIN versions v ON c.exam=v.exam AND c.subject=v.subject
+                  AND c.item_id=v.item_id AND c.sha=v.sha
+                WHERE c.exam=? AND c.subject=? ORDER BY c.item_id''', (exam, subject)).fetchall()
+    entries = []
+    for payload, sha, source in rows[offset:offset+limit]:
+        item = json.loads(payload)
+        entries.append({'id': item['id'], 'sha256': sha, 'source': source,
+                        **{key: item.get(key) for key in
+                           ('item_type', 'topic', 'cognitive_task', 'essential_conditions')}})
+    return {'exam': exam, 'subject': subject, 'total_items': len(rows),
+            'offset': offset, 'limit': limit, 'items': entries,
+            'next_offset': offset+limit if offset+limit < len(rows) else None,
+            'catalog_missing_or_empty': not rows,
+            'full_items_read': False,
+            'limitations': ['Index fields may contain author errors. Retrieve the original item before using it as evidence.',
+                            'Follow next_offset to inspect later items; this page is not the whole catalog.']}
+
+
+def memory_get(path, exam, subject, item_ids, all_versions=False):
+    """Retrieve explicit identities, preserving their recorded payload and hash."""
+    wanted = set(item_ids)
+    if not wanted:
+        raise ValueError('At least one item ID is required')
+    path = Path(path)
+    matches = []
+    if path.exists():
+        with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as db:
+            placeholders = ','.join('?' for _ in wanted)
+            records = db.execute(f'''SELECT payload,sha,source FROM versions
+                WHERE exam=? AND subject=? AND item_id IN ({placeholders})
+                ORDER BY item_id,recorded,sha''', (exam, subject, *sorted(wanted)))
+            matches = [{'exam': exam, 'subject': subject, 'item': json.loads(payload),
+                        'sha256': sha, 'source': source} for payload, sha, source in records]
+    if not all_versions:
+        current = set()
+        path = Path(path)
+        if path.exists():
+            with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as db:
+                current = set(db.execute('SELECT item_id,sha FROM current WHERE exam=? AND subject=?', (exam, subject)))
+        matches = [row for row in matches if (row['item']['id'], row['sha256']) in current]
+    missing = wanted - {row['item']['id'] for row in matches}
+    if missing:
+        raise ValueError('Items not found in requested exam/subject: ' + ', '.join(sorted(missing)))
+    return {'exam': exam, 'subject': subject, 'all_versions': all_versions,
+            'items': matches, 'originality_verified': False}
+
+
 def normalized(text):
     text = unicodedata.normalize('NFC', text).lower()
     text = re.sub(r'</?u>', '', text)

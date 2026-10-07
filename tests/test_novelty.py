@@ -1,5 +1,5 @@
 from copy import deepcopy
-from haean.novelty import audit, digest, remember, history
+from haean.novelty import audit, digest, remember, history, memory_index, memory_get
 
 
 def row(identity='A',number=10):
@@ -68,6 +68,44 @@ def test_flagged_old_version_survives_higher_ranked_unflagged_revision(monkeypat
     assert result['flagged_neighbor_count'] == 1
     assert len(result['neighbors']) == 1
     assert result['neighbors'][0]['previous_sha256'] == flagged['sha256']
+
+
+def test_memory_pages_and_explicit_version_retrieval(tmp_path):
+    path = tmp_path/'generated.sqlite'
+    assert memory_index(path, 'leet', '추리논증')['catalog_missing_or_empty']
+    assert not path.exists()
+    rows = [row(f'item-{n:03}') for n in range(105)]
+    remember(path, rows)
+    old = rows[0]
+    revised = row('item-000', 200)
+    remember(path, [revised])
+    # Current is an explicit pointer, not necessarily the newest insertion.
+    remember(path, [old])
+    ids = []
+    offset = 0
+    while offset is not None:
+        page = memory_index(path, 'leet', '추리논증', offset, limit=40)
+        ids.extend(item['id'] for item in page['items'])
+        offset = page['next_offset']
+    assert ids == [x['item']['id'] for x in rows]
+    assert memory_get(path, 'leet', '추리논증', ['item-000'])['items'] == [old]
+    versions = memory_get(path, 'leet', '추리논증', ['item-000'], all_versions=True)['items']
+    assert {x['sha256'] for x in versions} == {old['sha256'], revised['sha256']}
+
+
+def test_memory_does_not_cross_exam_or_hide_missing_ids(tmp_path):
+    import pytest
+    path = tmp_path/'generated.sqlite'
+    leet = row('shared')
+    psat = deepcopy(leet)
+    psat['exam'] = 'psat7'
+    remember(path, [leet, psat])
+    assert memory_index(path, 'psat7', '추리논증')['total_items'] == 1
+    assert memory_get(path, 'psat7', '추리논증', ['shared'])['items'][0]['exam'] == 'psat7'
+    with pytest.raises(ValueError, match='not found'):
+        memory_get(path, 'leet', '추리논증', ['shared', 'absent'])
+    with pytest.raises(ValueError, match='offset'):
+        memory_index(path, 'leet', '추리논증', limit=0)
 
 
 def test_old_question_remains_searchable_after_100_other_items(tmp_path):

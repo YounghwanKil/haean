@@ -112,8 +112,12 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 
 ```bash
 ./haean tools novelty-index PREVIOUS_RUN_OR_PRODUCTION
+./haean tools novelty-memory --exam leet --subject 추리논증 --out runs/memory-index.json
+./haean tools novelty-get --exam leet --subject 추리논증 --item ITEM_ID --all-versions --out runs/selected-history.json
 ./haean tools novelty-check NEW_RUN_OR_PRODUCTION --out runs/novelty-review.json
 ```
+
+`novelty-memory`는 현재 문항의 인지 과제·조건을 원문 그대로 나열하는 색인입니다. `next_offset`이 있으면 `--offset`으로 다음 페이지도 확인합니다. 가까운 과제를 골라 `novelty-get`으로 문항 전문과 버전 해시를 읽습니다. 색인을 읽은 것을 전체 원문 독해로 기록하지 않으며, 내부 설명에 오류가 있을 수 있으므로 원문·정정 기록과 대조합니다. 누적 원문 전체를 매번 문맥에 넣을 필요는 없습니다.
 
 수정본은 같은 ID의 버전으로 남기며 새 문항 수에 더하지 않습니다. 기본 상위 유사 후보뿐 아니라 경고 기준을 넘긴 후보도 개수 제한 없이 검토 목록에 남깁니다. 숫자·영문 기호를 바꾼 지문, 조건·해설, 선지의 유사 후보를 찾고, 과목별로 과거 버전까지 검색합니다. 동일 유형이나 공통지문이라는 이유만으로 표절 판정을 내리지 않습니다. 편집 검토자가 후보 쌍의 결정적 추론과 오답 설계를 비교해야 합니다. 문자 유사도가 낮은 구조 재탕은 놓칠 수 있어 이 명령만으로 독창성을 승인하지 않습니다. 100문항 이후 품질은 별도의 연속 생성 실험으로 확인해야 합니다.
 
