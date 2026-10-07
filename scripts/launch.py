@@ -30,7 +30,9 @@ def codex_command(codex, task, madmax=False):
 
 def help_text():
     banner()
-    print('''시작하기
+    print('''일반 터미널에서 실행 (Codex 대화창 밖)
+
+시작하기
   haean setup            스킬과 로컬 도구 설치
   haean doctor           설치·로그인 상태 점검 (JSON)
   haean status           로컬 문항 작업 현황

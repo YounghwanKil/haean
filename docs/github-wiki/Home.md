@@ -3,6 +3,7 @@
 Codex 구독으로 LEET 추리논증과 PSAT 5·7급 언어논리·자료해석·상황판단을 제작·검토하는 팀 작업 환경입니다.
 
 - [설치와 실행](Installation)
+- [터미널·Codex 사용법](Usage)
 - [스킬과 제작 흐름](Workflow)
 - [데이터와 지식 위키](Knowledge)
 - [한글 양식 출력](Layout)
