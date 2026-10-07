@@ -151,7 +151,8 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         values = [item.stem, item.passage, *item.statements, *[o.text for o in item.options],
                   *[v for t in item.tables for row in [t.columns, *t.rows] for v in row]]
         if kind == 'solutions': values = [item.explanation, *[j.explanation for j in item.judgments]]
-        if any(''.join(v.split()) not in content for v in values): missing.append(item.id)
+        # Underline markup becomes HWP character formatting, not visible text.
+        if any(''.join(v.replace('<u>', '').replace('</u>', '').split()) not in content for v in values): missing.append(item.id)
     if missing: raise ValueError('출력 재읽기에서 내용 누락: '+str(missing))
     result = {'engine': 'hwplib 1.1.11', 'template': str(template.resolve()),
               'template_sha256': hashlib.sha256(template.read_bytes()).hexdigest(), 'inputs': versions,

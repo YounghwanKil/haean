@@ -13,7 +13,30 @@ import java.util.*;
 
 /** Template-native paragraphs. Input is TSV style-id, break flags, base64 UTF-8 text. */
 public class HaeanText {
+    // Only the explicit underline markup used by exam authors is interpreted.
+    // Other angle-bracket text (e.g. <표>) remains literal exam content.
+    static String underlines(String source, List<int[]> ranges) {
+        StringBuilder plain=new StringBuilder();int start=-1;
+        for(int i=0;i<source.length();) {
+            if(source.startsWith("<u>",i)) {
+                if(start>=0)throw new IllegalArgumentException("Nested underline markup");
+                start=plain.length();i+=3;
+            } else if(source.startsWith("</u>",i)) {
+                if(start<0 || start==plain.length())throw new IllegalArgumentException("Invalid underline markup");
+                ranges.add(new int[]{start,plain.length()});start=-1;i+=4;
+            } else plain.append(source.charAt(i++));
+        }
+        if(start>=0)throw new IllegalArgumentException("Unclosed underline markup");
+        return plain.toString();
+    }
+    static int position(String text,int offset,boolean first) {
+        // HWP inline tab controls occupy eight UTF-16 positions.
+        int value=offset+(first?16:0);
+        for(int i=0;i<offset;i++)if(text.charAt(i)=='\t')value+=7;
+        return value;
+    }
     static void text(HWPFile file, Paragraph p, int styleId, int breaks, String text, boolean first) throws Exception {
+        List<int[]> ranges=new ArrayList<>();text=underlines(text,ranges);
         Style s = file.getDocInfo().getStyleList().get(styleId);
         p.createText();
         if (first) {
@@ -31,11 +54,24 @@ public class HaeanText {
         }
         p.createCharShape();
         p.getCharShape().addParaCharShape(0, s.getCharShapeId());
+        if(!ranges.isEmpty()) {
+            var shape=file.getDocInfo().getCharShapeList().get(s.getCharShapeId()).clone();
+            shape.getProperty().setUnderLineSort(kr.dogfoot.hwplib.object.docinfo.charshape.UnderLineSort.Bottom);
+            shape.getProperty().setUnderLineShape(kr.dogfoot.hwplib.object.docinfo.charshape.BorderType2.Solid);
+            int id=file.getDocInfo().getCharShapeList().size();file.getDocInfo().getCharShapeList().add(shape);
+            var events=new TreeMap<Integer,Integer>();events.put(0,s.getCharShapeId());
+            for(int[] range:ranges) {
+                events.put(position(text,range[0],first),id);
+                events.put(position(text,range[1],first),s.getCharShapeId());
+            }
+            p.getCharShape().getPositonShapeIdPairList().clear();
+            for(var event:events.entrySet())p.getCharShape().addParaCharShape(event.getKey(),event.getValue());
+        }
         p.deleteLineSeg(); p.deleteRangeTag();
         p.getHeader().setStyleId((short)styleId);
         p.getHeader().setParaShapeId(s.getParaShapeId());
         p.getHeader().setCharacterCount(p.getText().getCharSize());
-        p.getHeader().setCharShapeCount(1);
+        p.getHeader().setCharShapeCount(p.getCharShape().getPositonShapeIdPairList().size());
         p.getHeader().setLineAlignCount(0);
         p.getHeader().setRangeTagCount(0);
         p.getHeader().getControlMask().setValue(0);
