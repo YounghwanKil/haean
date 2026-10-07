@@ -13,8 +13,19 @@ ROOT = Path(__file__).resolve().parents[1]
 STATUS_ITEMS = ["model-with-reasoning", "current-dir", "context-remaining", "five-hour-limit", "weekly-limit"]
 
 
-def banner():
-    print("\n  ≋  haean · 해안\n     LEET 추리논증 · PSAT 5급 / 7급\n", flush=True)
+def banner(madmax=False):
+    accent = "\033[36;1m" if sys.stdout.isatty() else ""
+    reset = "\033[0m" if accent else ""
+    mode = "MADMAX · 승인/샌드박스 생략" if madmax else "STANDARD · 기존 권한 설정"
+    print(f"\n{accent}  ≋≋≋  H A E A N  ·  해안{reset}\n  LEET 추리논증  /  PSAT 5급 · 7급\n  {mode}\n", flush=True)
+
+
+def codex_command(codex, task, madmax=False):
+    command = [codex, "-C", str(ROOT), "-m", "gpt-6-astra",
+               "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS)]
+    if madmax:
+        command.append("--dangerously-bypass-approvals-and-sandbox")
+    return command + ["$haean " + task]
 
 
 def help_text():
@@ -27,6 +38,7 @@ def help_text():
   haean setup-figures     도식·그래프 검토 도구 설치
   haean setup-layout     한글 양식 도구 설치
   haean "작업 요청"      Astra와 해안 작업 시작
+  haean --madmax "요청"  이번 실행만 승인·샌드박스 생략
 
 예시
   haean "LEET 규범 논증 평가 2문항을 만들고 독립 검토해줘"
@@ -241,16 +253,16 @@ def main():
     login = subprocess.run([codex, "login", "status"], capture_output=True, text=True)
     if login.returncode or "ChatGPT" not in login.stdout + login.stderr:
         raise ValueError("ChatGPT 구독 로그인 상태가 아닙니다. codex login을 실행하세요")
+    madmax = bool(args and args[0] == "--madmax")
+    if madmax: args = args[1:]
     task = " ".join(args) or "해안 작업 환경과 자료 상태를 확인하고 다음 작업을 받을 준비를 해줘."
     env = os.environ.copy()
     for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
         env.pop(key, None)
     if not (ROOT / ".agents/skills/haean/SKILL.md").exists() or not (ROOT / ".venv/bin/python").exists():
         raise ValueError("해안 설치가 필요합니다. ./haean setup 을 먼저 실행하세요")
-    banner()
-    return subprocess.run([codex, "-C", str(ROOT), "-m", "gpt-6-astra",
-                           "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS),
-                           "$haean " + task], env=env).returncode
+    banner(madmax=madmax)
+    return subprocess.run(codex_command(codex, task, madmax), env=env).returncode
 
 
 if __name__ == "__main__":

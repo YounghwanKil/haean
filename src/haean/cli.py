@@ -147,6 +147,11 @@ def main():
     p.add_argument("run", type=Path)
     p.add_argument("--question-template", type=Path, required=True)
     p.add_argument("--solution-template", type=Path, required=True)
+    p = sub.add_parser("wiki", help="로컬 근거 기반 위키 관리")
+    p.add_argument("operation", choices=["init", "put", "lint", "search"])
+    p.add_argument("--root", type=Path, default=Path("data/wiki"))
+    p.add_argument("--packet", type=Path)
+    p.add_argument("--query")
     args = parser.parse_args()
     try:
         result = dispatch(args)
@@ -161,6 +166,15 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == "wiki":
+        from . import wiki
+        if a.operation == "put":
+            if not a.packet: raise ValueError("--packet is required")
+            return wiki.put(a.root, a.packet)
+        if a.operation == "search":
+            if not a.query: raise ValueError("--query is required")
+            return wiki.search(a.root, a.query)
+        return getattr(wiki, a.operation)(a.root)
     if a.command == 'exam-resume':
         from .exam_resume import resume
         return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement)
