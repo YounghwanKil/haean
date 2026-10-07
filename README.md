@@ -13,6 +13,8 @@ cd haean
 haean doctor
 ```
 
+물결 로고가 있는 파란 하단 HUD까지 사용하려면 tmux를 설치합니다: macOS `brew install tmux`, Debian/Ubuntu `sudo apt install tmux`. `haean hud`로 설치·비활성화·기존 tmux 여부를 확인할 수 있습니다. HUD는 Codex 기본 상태줄 바로 아래의 **별도 고정 줄**이며 터미널의 일반 본문 복사에는 포함되지 않을 수 있습니다.
+
 Python 3.11+, Git, Codex CLI가 필요합니다. `codex login`으로 ChatGPT 로그인합니다. `setup`은 프로젝트 안에 스킬 링크·Python 가상환경을 설치하고, 고정된 im-not-ai submodule을 가져옵니다. 전역 Codex 설정·계정 인증·권한을 덮어쓰지 않습니다. 현재 런처는 macOS/Linux용입니다.
 
 Codex 앱에서 이 프로젝트를 열고 자연어로 요청하거나, 터미널에서 다음처럼 시작하세요. `$haean`은 총괄을 명시하고 싶을 때 붙이는 선택사항입니다.

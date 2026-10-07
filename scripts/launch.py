@@ -111,6 +111,7 @@ def help_text():
   haean setup            스킬과 로컬 도구 설치
   haean doctor           설치·로그인 상태 점검 (JSON)
   haean banner           시작 로고 미리보기 (모델 호출 없음)
+  haean hud              하단 HUD 설치·환경 진단 (모델 호출 없음)
   haean skills           스킬 10개 목록·설명
   haean skills psat      특정 스킬 설명·호출 예시
   haean skill psat "요청" PSAT 스킬로 바로 시작
@@ -316,7 +317,16 @@ def doctor(strict=False):
     figures = subprocess.run([str(python), "-c", "import matplotlib, PIL"], cwd=ROOT,
                              capture_output=True, text=True, timeout=10) if python.exists() else None
     figures_ready = bool(figures and figures.returncode == 0)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from terminal_ui import hud_status
+    hud = hud_status()
     actions = []
+    if hud["state"] == "tmux_not_installed":
+        actions.append("파란 해안 HUD: tmux를 설치한 뒤 새 터미널에서 haean을 실행하세요. macOS: brew install tmux / Debian·Ubuntu: sudo apt install tmux")
+    elif hud["state"] == "disabled_by_environment":
+        actions.append("해안 HUD가 HAEAN_NO_TMUX=1로 꺼져 있습니다. HUD를 쓰려면 해당 환경변수를 해제하세요.")
+    elif hud["state"] == "existing_tmux":
+        actions.append("기존 tmux 안에서는 별도 해안 HUD를 추가하지 않습니다. 새 일반 터미널에서 haean을 실행하세요.")
     if not codex: actions.append("Codex CLI를 설치하세요: https://learn.chatgpt.com/docs/cli")
     elif not logged_in: actions.append("codex login 으로 ChatGPT 구독 계정에 로그인하세요.")
     if not tools_ready or not humanizer or not all(s['discovered'] for s in skills):
@@ -330,7 +340,7 @@ def doctor(strict=False):
     ready = bool(codex and logged_in and tools_ready and humanizer and skills
                  and all(s['discovered'] for s in skills) and roles and all(r['valid'] for r in roles))
     print(json.dumps({"root": str(ROOT), "codex": codex,
-                      "chatgpt_login": logged_in,
+                      "chatgpt_login": logged_in, "terminal_hud": hud,
                       "tools_installed": tools_ready,
                       "humanizer": humanizer, "humanizer_revision": humanizer_revision,
                       "skills": skills, "roles": roles, "core_ready": ready,
@@ -346,6 +356,11 @@ def main():
     args = sys.argv[1:]
     if args in (["banner"], ["banner", "--madmax"]):
         banner(madmax="--madmax" in args, large=True)
+        return 0
+    if args == ["hud"]:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from terminal_ui import hud_status
+        print(json.dumps(hud_status(), ensure_ascii=False, indent=2))
         return 0
     if args == ["setup"]: return setup()
     if args == ["setup-figures"]:

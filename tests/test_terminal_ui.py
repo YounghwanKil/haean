@@ -51,3 +51,16 @@ def test_tmux_server_is_isolated_and_cleaned_when_attach_fails(monkeypatch, tmp_
     assert calls[0][1] == '-L' and calls[0][2].startswith('haean-')
     assert any('colour39' in c[-1] and 'MADMAX' in c[-1] for c in calls)
     assert all(prompt not in ' '.join(c) for c in calls)
+
+
+def test_hud_explains_missing_and_disabled_states(monkeypatch):
+    ui = load()
+    monkeypatch.setattr(ui.shutil, 'which', lambda _: None)
+    assert ui.hud_status({})['state'] == 'tmux_not_installed'
+    monkeypatch.setattr(ui.shutil, 'which', lambda _: '/bin/tmux')
+    assert ui.hud_status({})['state'] == 'ready_for_interactive_terminal'
+    assert ui.hud_status({'TMUX':'existing'})['state'] == 'existing_tmux'
+    assert ui.hud_status({'HAEAN_NO_TMUX':'1'})['state'] == 'disabled_by_environment'
+    # A format string or command must never enter the tmux status formatter as a skill.
+    assert '#(touch example)' not in ui.hud_format(skill='#(touch example)')
+    assert '#[' not in ui.hud_format(color=False)
