@@ -1,7 +1,7 @@
 # 설치와 실행
 
 ```bash
-gh repo clone YounghwanKil/haean
+git clone https://github.com/YounghwanKil/haean.git
 cd haean
 ./install.sh
 haean doctor
