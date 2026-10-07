@@ -13,11 +13,36 @@ ROOT = Path(__file__).resolve().parents[1]
 STATUS_ITEMS = ["model-with-reasoning", "current-dir", "context-remaining", "five-hour-limit", "weekly-limit"]
 
 
-def banner(madmax=False):
-    accent = "\033[36;1m" if sys.stdout.isatty() else ""
-    reset = "\033[0m" if accent else ""
+LOGO = (
+    "██╗  ██╗ █████╗ ███████╗ █████╗ ███╗   ██╗",
+    "██║  ██║██╔══██╗██╔════╝██╔══██╗████╗  ██║",
+    "███████║███████║█████╗  ███████║██╔██╗ ██║",
+    "██╔══██║██╔══██║██╔══╝  ██╔══██║██║╚██╗██║",
+    "██║  ██║██║  ██║███████╗██║  ██║██║ ╚████║",
+    "╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝",
+)
+
+
+def banner(madmax=False, *, large=False, skill="haean"):
+    color = sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
+    accent = "\033[36;1m" if color else ""
+    reset = "\033[0m" if color else ""
+    width = shutil.get_terminal_size(fallback=(80, 24)).columns
     mode = "MADMAX · 승인/샌드박스 생략" if madmax else "STANDARD · 기존 권한 설정"
-    print(f"\n{accent}  ≋≋≋  H A E A N  ·  해안{reset}\n  LEET 추리논증  /  PSAT 5급 · 7급\n  {mode}\n", flush=True)
+    print()
+    if large and width >= max(map(len, LOGO)) + 4:
+        for row in LOGO:
+            print(f"{accent}  {row}{reset}")
+        print(f"{accent}  ≋≋≋  H A E A N  /  해안{reset}")
+    else:
+        print(f"{accent}  ≋≋≋  H A E A N  ·  해안{reset}")
+    print("  LEET 추리논증 · 언어이해 / PSAT 5급 · 7급")
+    print(f"  {mode}")
+    if large:
+        print(f"  작업 스킬  ${skill}")
+        print("  출제 → 독립 풀이 → 검토·수정 → 한글 출력")
+        print("  자연어로 요청하세요.  스킬 목록: haean skills")
+    print(flush=True)
 
 
 def skill_catalog():
@@ -79,6 +104,7 @@ def help_text():
 시작하기
   haean setup            스킬과 로컬 도구 설치
   haean doctor           설치·로그인 상태 점검 (JSON)
+  haean banner           시작 로고 미리보기 (모델 호출 없음)
   haean skills           스킬 10개 목록·설명
   haean skills psat      특정 스킬 설명·호출 예시
   haean skill psat "요청" PSAT 스킬로 바로 시작
@@ -312,6 +338,9 @@ def doctor(strict=False):
 
 def main():
     args = sys.argv[1:]
+    if args in (["banner"], ["banner", "--madmax"]):
+        banner(madmax="--madmax" in args, large=True)
+        return 0
     if args == ["setup"]: return setup()
     if args == ["setup-figures"]:
         python = ROOT / ".venv/bin/python"
@@ -358,7 +387,7 @@ def main():
         env.pop(key, None)
     if not (ROOT / ".agents/skills/haean/SKILL.md").exists() or not (ROOT / ".venv/bin/python").exists():
         raise ValueError("해안 설치가 필요합니다. ./haean setup 을 먼저 실행하세요")
-    banner(madmax=madmax)
+    banner(madmax=madmax, large=True, skill=skill)
     return subprocess.run(codex_command(codex, task, madmax, skill), env=env).returncode
 
 

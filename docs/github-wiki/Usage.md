@@ -59,3 +59,7 @@ Codex 앱에서는 해안 프로젝트의 지침과 스킬 설명을 바탕으�
 ## 스킬 목록
 
 터미널에서 `haean skills`로 목록을 보고 `haean skills psat`로 자세한 예시를 확인한다. `haean skill psat "작업 요청"`으로 바로 시작할 수 있으며 `haean --madmax skill psat "작업 요청"`은 이번 실행에만 승인·샌드박스 생략을 적용한다. Codex 대화창에서는 자연어로 요청하거나 `$haean-psat`으로 스킬을 명시한다. 언어이해 `$haean-reading`은 파일럿이다.
+
+### 큰 시작 로고
+
+`haean` 또는 `haean --madmax`로 진입하면 청록색 대형 HAEAN 로고와 실행 모드·선택 스킬을 표시한 뒤 Codex로 이어집니다. `haean banner`는 모델 호출 없이 시작 화면만 보여주며, `haean banner --madmax`로 모드 표시도 확인할 수 있습니다. 좁은 창은 작은 로고로 전환하고 `NO_COLOR=1`이면 색을 끕니다. 시작 로고는 상시 고정 하단 로고가 아니며 Codex 화면 전환 뒤에는 가려질 수 있습니다.
