@@ -20,12 +20,56 @@ def banner(madmax=False):
     print(f"\n{accent}  ≋≋≋  H A E A N  ·  해안{reset}\n  LEET 추리논증  /  PSAT 5급 · 7급\n  {mode}\n", flush=True)
 
 
-def codex_command(codex, task, madmax=False):
+def skill_catalog():
+    """Read our single-line, JSON-quoted UI fields without bootstrap dependencies."""
+    result = []
+    for source in sorted((ROOT / "skills").glob("haean*")):
+        if not (source / "SKILL.md").is_file():
+            continue
+        metadata = source / "agents/openai.yaml"
+        fields = {}
+        for line in metadata.read_text().splitlines():
+            if line.startswith("  ") and ": " in line:
+                key, value = line.strip().split(": ", 1)
+                fields[key] = json.loads(value)
+        result.append({"name": source.name, **fields,
+                       "discovered": (ROOT / ".agents/skills" / source.name).resolve() == source.resolve()
+                                     and (ROOT / ".agents/skills" / source.name / "SKILL.md").is_file()})
+    return result
+
+
+def select_skill(name):
+    name = name.removeprefix("$")
+    if name != "haean" and not name.startswith("haean-"):
+        name = "haean-" + name
+    found = next((s for s in skill_catalog() if s["name"] == name), None)
+    if found is None:
+        raise ValueError("알 수 없는 해안 스킬입니다. haean skills 로 목록을 확인하세요.")
+    return found
+
+
+def show_skills(name=None):
+    banner()
+    rows = [select_skill(name)] if name else skill_catalog()
+    for skill in rows:
+        state = "연결됨" if skill["discovered"] else "setup 필요"
+        print(f"  ${skill['name']}  ·  {skill['display_name']}  [{state}]")
+        print("    " + skill['short_description'])
+        if name:
+            print("    Codex 대화창: " + skill['default_prompt'])
+            print("    터미널: haean skill " + skill['name'] + ' "작업 요청"')
+        print()
+    print("터미널: haean skills psat 로 상세 보기 · haean skill psat \"작업 요청\" 으로 실행")
+    print("Codex 대화창에서는 $haean 또는 위 스킬 이름을 입력합니다. 언어이해는 파일럿입니다.")
+    return 0
+
+
+def codex_command(codex, task, madmax=False, skill="haean"):
     command = [codex, "-C", str(ROOT), "-m", "gpt-6-astra",
                "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS)]
     if madmax:
         command.append("--dangerously-bypass-approvals-and-sandbox")
-    return command + ["$haean " + task]
+    return command + ["$" + skill + " " + task]
 
 
 def help_text():
@@ -35,6 +79,9 @@ def help_text():
 시작하기
   haean setup            스킬과 로컬 도구 설치
   haean doctor           설치·로그인 상태 점검 (JSON)
+  haean skills           스킬 10개 목록·설명
+  haean skills psat      특정 스킬 설명·호출 예시
+  haean skill psat "요청" PSAT 스킬로 바로 시작
   haean status           로컬 문항 작업 현황
   haean track-exam RUN   status에 표시할 현재 회차 지정
   haean setup-figures     도식·그래프 검토 도구 설치
@@ -241,6 +288,9 @@ def main():
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup_layout.py")], check=True).returncode
     if args in (["doctor"], ["doctor", "--check"]): return doctor(strict="--check" in args)
     if args == ["status"]: return status()
+    if args and args[0] == "skills":
+        if len(args) > 2: raise ValueError("사용법: haean skills [스킬명]")
+        return show_skills(args[1] if len(args) == 2 else None)
     if args and args[0] == 'track-exam':
         if len(args) != 2: raise ValueError('사용법: haean track-exam runs/회차폴더')
         return track_exam(args[1])
@@ -250,13 +300,18 @@ def main():
     if args and args[0] == "tools":
         return subprocess.run([str(ROOT / "scripts/haean-tool"), *args[1:]]).returncode
     if args and args[0] in {"-h", "--help", "help"}: return help_text()
+    madmax = bool(args and args[0] == "--madmax")
+    if madmax: args = args[1:]
+    skill = "haean"
+    if args and args[0] == "skill":
+        if len(args) < 2: raise ValueError("사용법: haean skill 스킬명 [작업 요청]")
+        selected = select_skill(args[1]); skill = selected["name"]
+        args = args[2:] or [selected["default_prompt"].removeprefix("$" + skill + " ")]
     codex = shutil.which("codex")
     if not codex: raise ValueError("Codex CLI를 설치하고 codex login으로 ChatGPT 로그인하세요")
     login = subprocess.run([codex, "login", "status"], capture_output=True, text=True)
     if login.returncode or "ChatGPT" not in login.stdout + login.stderr:
         raise ValueError("ChatGPT 구독 로그인 상태가 아닙니다. codex login을 실행하세요")
-    madmax = bool(args and args[0] == "--madmax")
-    if madmax: args = args[1:]
     task = " ".join(args) or "해안 작업 환경과 자료 상태를 확인하고 다음 작업을 받을 준비를 해줘."
     env = os.environ.copy()
     for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
@@ -264,7 +319,7 @@ def main():
     if not (ROOT / ".agents/skills/haean/SKILL.md").exists() or not (ROOT / ".venv/bin/python").exists():
         raise ValueError("해안 설치가 필요합니다. ./haean setup 을 먼저 실행하세요")
     banner(madmax=madmax)
-    return subprocess.run(codex_command(codex, task, madmax), env=env).returncode
+    return subprocess.run(codex_command(codex, task, madmax, skill), env=env).returncode
 
 
 if __name__ == "__main__":

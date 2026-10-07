@@ -1,4 +1,5 @@
 interface:
-  display_name: "haean-exam"
-  short_description: "해안 전용 LEET·PSAT 출제와 검토 작업을 수행합니다"
-  default_prompt: "$haean-exam 작업을 진행해줘."
+  display_name: "해안 · 모의고사 구성"
+  short_description: "회차별 유형·난도·소재·공유 지문·정답 분포를 구성합니다"
+  default_prompt: "$haean-exam PSAT 5급 언어논리 40문항 회차의 유형과 난도를 구성해줘."
+  brand_color: "#0891B2"

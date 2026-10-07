@@ -1,0 +1,5 @@
+interface:
+  display_name: "해안 · 언어이해 파일럿"
+  short_description: "언어이해 지문과 선지 근거를 검토하는 연구용 파일럿입니다"
+  default_prompt: "$haean-reading 인문 지문 1개와 3문항을 파일럿으로 만들고 독립 검토해줘."
+  brand_color: "#0891B2"

@@ -1,4 +1,5 @@
 interface:
-  display_name: "haean-psat"
-  short_description: "해안 전용 LEET·PSAT 출제와 검토 작업을 수행합니다"
-  default_prompt: "$haean-psat 작업을 진행해줘."
+  display_name: "해안 · PSAT 출제"
+  short_description: "5·7급 언어논리·자료해석·상황판단을 급수별로 출제합니다"
+  default_prompt: "$haean-psat PSAT 7급 자료해석 문항 2개를 만들고 과목별 기준으로 검토해줘."
+  brand_color: "#0891B2"

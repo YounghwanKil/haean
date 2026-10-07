@@ -1,0 +1,5 @@
+interface:
+  display_name: "해안 · 한글 출력"
+  short_description: "기존 HWP 양식에 문항을 삽입하고 실제 출력 배치를 검증합니다"
+  default_prompt: "$haean-layout 현재 회차를 기존 한글 문제지·해설지 양식으로 출력하고 배치를 확인해줘."
+  brand_color: "#0891B2"
