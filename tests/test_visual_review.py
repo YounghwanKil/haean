@@ -28,6 +28,9 @@ def test_cli_attaches_real_pngs_and_preserves_blind_image_provenance(tmp_path, m
         if command[1]=='login':return SimpleNamespace(returncode=0,stdout='ChatGPT',stderr='')
         path=Path(command[command.index('--image')+1])
         with Image.open(path) as image:assert image.width>500 and image.height>300
+        # The attachment must identify its option even outside the JSON manifest.
+        with Image.open(path) as image:
+            assert image.crop((0,0,image.width,72)).convert('L').getextrema()[0] < 100
         image_bytes.append(path.read_bytes())
         assert 'PRIVATE ANSWER MEMO' not in kwargs['input']
         assert '"answer"' not in kwargs['input'] and 'rendered_images' in kwargs['input']
