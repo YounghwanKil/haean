@@ -60,7 +60,7 @@ def show_skills(name=None):
             print("    터미널: haean skill " + skill['name'] + ' "작업 요청"')
         print()
     print("터미널: haean skills psat 로 상세 보기 · haean skill psat \"작업 요청\" 으로 실행")
-    print("Codex 대화창에서는 $haean 또는 위 스킬 이름을 입력합니다. 언어이해는 파일럿입니다.")
+    print("해안 대화창에서는 자연어로 요청하세요. $haean 또는 위 스킬 이름으로 명시할 수도 있습니다. 언어이해는 파일럿입니다.")
     return 0
 
 
@@ -94,7 +94,7 @@ def help_text():
   haean "PSAT 7급 자료해석 25문항 회차를 구성해줘"
   haean "검토의견.txt를 읽고 문항 수정과 개선 가설을 구분해줘"
 
-앱에서는 이 저장소를 열고 $haean을 호출하세요.
+앱에서는 이 저장소를 열고 자연어로 요청하세요. $haean 명시는 선택사항입니다.
 CLI 하단: 실제 모델 · 작업 폴더 · 남은 컨텍스트 · 사용량 한도.
 원문 자료와 최종 전문가 검토는 팀에서 별도로 제공합니다.''')
 
@@ -243,7 +243,7 @@ def setup():
     if not python.exists():
         subprocess.run([sys.executable, "-m", "venv", str(ROOT / ".venv")], check=True)
     subprocess.run([str(python), "-m", "pip", "install", "-e", ".[dev]"], cwd=ROOT, check=True)
-    print("해안 스킬·역할·로컬 도구 설치 완료. Codex에서 이 폴더를 다시 열고 $haean을 호출하세요.")
+    print("해안 스킬·역할·로컬 도구 설치 완료. Codex에서 이 폴더를 다시 열고 자연어로 요청하세요. $haean 명시는 선택사항입니다.")
 
 
 def source_status():
