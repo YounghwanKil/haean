@@ -140,3 +140,24 @@ def test_humanizer_revision_distinguishes_dirty_and_wrong_commit(tmp_path,monkey
     assert module.humanizer_state()['state']=='mismatch'
     responses('abc123\n',' M SKILL.md\n')
     assert module.humanizer_state()['state']=='modified'
+
+
+def test_reading_current_exam_tracks_content_without_claiming_approval(tmp_path, monkeypatch, capsys):
+    import json
+    module = load('launch'); monkeypatch.setattr(module, 'ROOT', tmp_path)
+    run = tmp_path/'runs/reading'; run.mkdir(parents=True)
+    book = {'passages': [{'questions': [{'number': 1, 'stem': 'original'}]}]}
+    path = run/'book.json'; path.write_text(json.dumps(book))
+    before = path.read_bytes()
+    module.track_exam('runs/reading'); module.status()
+    text = capsys.readouterr().out
+    assert '언어이해 / 1문항' in text and '1지문' in text
+    assert '회차 지정은 승인 증거가 아닙니다' in text
+    assert before == path.read_bytes()
+    book['passages'][0]['questions'][0]['stem'] = 'revised'
+    path.write_text(json.dumps(book)); module.status()
+    assert '지정 후 문항 내용이 변경됨' in capsys.readouterr().out
+    book['passages'][0]['questions'].append({'number': 1})
+    path.write_text(json.dumps(book))
+    with pytest.raises(ValueError, match='연속'):
+        module.track_exam('runs/reading')

@@ -159,16 +159,50 @@ def tracked_exam_path(value):
     return run
 
 
+def reading_snapshot(run):
+    content = (run / 'book.json').read_bytes()
+    book = json.loads(content)
+    passages = book.get('passages') if isinstance(book, dict) else None
+    if not isinstance(passages, list) or not passages:
+        raise ValueError('언어이해 book.json에 passages가 필요합니다')
+    questions = []
+    for passage in passages:
+        if not isinstance(passage, dict) or not isinstance(passage.get('questions'), list):
+            raise ValueError('언어이해 지문별 questions 형식을 확인하세요')
+        questions.extend(passage['questions'])
+    if not questions or any(not isinstance(q, dict) for q in questions):
+        raise ValueError('언어이해 문항이 없습니다')
+    numbers = [q.get('number') for q in questions]
+    if numbers != list(range(1, len(questions) + 1)):
+        raise ValueError('언어이해 문항 번호는 1부터 연속이어야 합니다')
+    return content, len(passages), len(questions)
+
+
 def track_exam(value):
     run = tracked_exam_path(value)
+    if not (run / 'assembled.json').exists() and (run / 'book.json').exists():
+        content, passages, count = reading_snapshot(run)
+        key = f'leet / 언어이해 / {count}문항'
+        entry = {'run': str(run.relative_to(ROOT)), 'kind': 'reading',
+                 'book_sha256': hashlib.sha256(content).hexdigest()}
+    else:
+        return track_assembled_exam(run)
+    save_exam_entry(key, entry, run)
+
+
+def track_assembled_exam(run):
     content = (run / 'assembled.json').read_bytes()
     result = json.loads(content)
     if not isinstance(result, dict) or not all(k in result for k in ['exam', 'subject', 'requested', 'written', 'errors']):
         raise ValueError('assembled.json이 있는 회차를 지정하세요')
     key = f"{result['exam']} / {result['subject']} / {result['requested']}문항"
+    save_exam_entry(key, {'run': str(run.relative_to(ROOT)),
+                          'assembled_sha256': hashlib.sha256(content).hexdigest()}, run)
+
+
+def save_exam_entry(key, entry, run):
     registry = exam_registry()
-    registry['exams'][key] = {'run': str(run.relative_to(ROOT)),
-                              'assembled_sha256': hashlib.sha256(content).hexdigest()}
+    registry['exams'][key] = entry
     path = ROOT / 'runs/current-exams.json'
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(registry, ensure_ascii=False, indent=2))
@@ -188,6 +222,14 @@ def current_exam_status():
     for key, entry in entries.items():
         try:
             run = tracked_exam_path(entry['run'])
+            if entry.get('kind') == 'reading':
+                content, passages, count = reading_snapshot(run)
+                print(f'  {key}: {passages}지문 · {count}문항 · 언어이해 파일럿')
+                print(f'    {run}')
+                if hashlib.sha256(content).hexdigest() != entry['book_sha256']:
+                    print('    지정 후 문항 내용이 변경됨. 검토·출력 해시를 다시 확인하세요.')
+                print('    검토·한글 배치 근거: verification.json 및 reviews/ 확인 필요; 회차 지정은 승인 증거가 아닙니다.')
+                continue
             content = (run / 'assembled.json').read_bytes(); result = json.loads(content)
             changed = hashlib.sha256(content).hexdigest() != entry['assembled_sha256']
             print(f"  {key}: {result['written']}/{result['requested']} · 조립 당시 오류 {len(result['errors'])}건")
