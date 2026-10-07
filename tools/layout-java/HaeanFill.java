@@ -21,6 +21,12 @@ public class HaeanFill {
         int breaks=p.getHeader().getDivideSort().getValue();
         HaeanText.text(file,p,style,breaks,value,false);
     }
+    static void keepFollowing(HWPFile file,Paragraph p,boolean keep) {
+        var shapes=file.getDocInfo().getParaShapeList();var shape=shapes.get(p.getHeader().getParaShapeId()).clone();
+        shape.getProperty1().setTogetherNextPara(keep);shape.getProperty1().setProtectPara(true);
+        int id=shapes.size();shapes.add(shape);p.getHeader().setParaShapeId(id);
+        file.getDocInfo().getIDMappings().setParaShapeCount(shapes.size());
+    }
     static List<Paragraph> tables(Section section,int start,int end) {
         List<Paragraph> result=new ArrayList<>();
         for(int n=start;n<end;n++) {
@@ -147,7 +153,7 @@ public class HaeanFill {
             if(t.matches("[0-9]+\\.첫줄발문.*")) starts.put(Integer.parseInt(t.substring(0,t.indexOf('.'))),i);
         }
         if(starts.size()!=40)throw new IllegalStateException("Requires supplied 40-slot blank question template; refusal prevents old questions being carried forward");
-        boolean trimmed25 = false;
+        boolean trimmedExam = false;
         Set<Paragraph> remove = Collections.newSetFromMap(new IdentityHashMap<>());
         Map<Paragraph,List<Paragraph>> insertAfter = new IdentityHashMap<>();
         for(var entry:starts.entrySet()) {
@@ -158,9 +164,10 @@ public class HaeanFill {
             String[] f=line.split("\\t",-1);
             if(f[0].equals("R")) { for(Section sec:file.getBodyText().getSectionList())replaceInList(file,sec,decode(f[1]),decode(f[2]));continue; }
             if(f[0].equals("C")) {
-                if(!f[1].equals("25"))throw new IllegalArgumentException("Only 25-slot trimming supported");
-                for(int i=starts.get(26);i<s.getParagraphCount();i++)remove.add(s.getParagraph(i));
-                trimmed25 = true;
+                int size=Integer.parseInt(f[1]);
+                if(size!=25 && size!=30)throw new IllegalArgumentException("Only 25/30-slot trimming supported");
+                for(int i=starts.get(size+1);i<s.getParagraphCount();i++)remove.add(s.getParagraph(i));
+                trimmedExam = true;
                 continue;
             }
             if(f[0].equals("N")) {
@@ -222,8 +229,46 @@ public class HaeanFill {
                 setText(file,s.getParagraph(start),value,style);
                 if(slot>1) {s.getParagraph(start).getHeader().getDivideSort().setDividePage(false);s.getParagraph(start).getHeader().getDivideSort().setDivideColumn(true);}
             }
+            else if(f[0].equals("L")) {
+                // Reading passages flow as native paragraphs, not a single
+                // unsplittable first-page question box.
+                remove.add(boxes.get(0));
+                var info=file.getDocInfo();
+                var heading=s.getParagraph(start);
+                var headingShape=info.getCharShapeList().get(info.getStyleList().get(heading.getHeader().getStyleId()).getCharShapeId()).clone();
+                headingShape.getProperty().setBold(true);
+                int headingCharId=info.getCharShapeList().size();info.getCharShapeList().add(headingShape);
+                heading.getCharShape().getPositonShapeIdPairList().clear();heading.getCharShape().addParaCharShape(0,headingCharId);
+                info.getIDMappings().setCharShapeCount(info.getCharShapeList().size());
+                var border=info.getBorderFillList().get(0).clone();
+                for(var edge:List.of(border.getLeftBorder(),border.getRightBorder(),border.getTopBorder(),border.getBottomBorder())) {
+                    edge.setType(kr.dogfoot.hwplib.object.docinfo.borderfill.BorderType.Solid);
+                    edge.setThickness(kr.dogfoot.hwplib.object.docinfo.borderfill.BorderThickness.MM0_12);
+                    edge.getColor().setValue(0);
+                }
+                info.getBorderFillList().add(border);
+                var shape=info.getParaShapeList().get(info.getStyleList().get(style).getParaShapeId()).clone();
+                shape.setBorderFillId(info.getBorderFillList().size());
+                shape.getProperty1().setLinkBorder(true);
+                shape.setLeftMargin(700);shape.setRightMargin(700);
+                shape.setLeftBorderSpace((short)500);shape.setRightBorderSpace((short)500);
+                shape.setTopBorderSpace((short)500);shape.setBottomBorderSpace((short)500);
+                int shapeId=info.getParaShapeList().size();info.getParaShapeList().add(shape);
+                info.getIDMappings().setBorderFillCount(info.getBorderFillList().size());
+                info.getIDMappings().setParaShapeCount(info.getParaShapeList().size());
+                for(String paragraph:value.split("\\n\\s*\\n")) {
+                    Paragraph text=new Paragraph();HaeanText.text(file,text,style,0,paragraph,false);
+                    text.getHeader().setParaShapeId(shapeId);
+                    insertAfter.computeIfAbsent(boxes.get(0),k->new ArrayList<>()).add(text);
+                }
+            }
             else if(f[0].equals("Q")) {
                 Paragraph stem=new Paragraph();HaeanText.text(file,stem,style,0,slot+". "+value,false);
+                if(insertAfter.containsKey(boxes.get(0))) {
+                    var shapes=file.getDocInfo().getParaShapeList();var shape=shapes.get(stem.getHeader().getParaShapeId()).clone();
+                    shape.setTopParaSpace(1400);int id=shapes.size();shapes.add(shape);stem.getHeader().setParaShapeId(id);
+                    file.getDocInfo().getIDMappings().setParaShapeCount(shapes.size());
+                }
                 insertAfter.computeIfAbsent(boxes.get(0),k->new ArrayList<>()).add(stem);
             }
             else if(f[0].equals("X")) {
@@ -238,7 +283,7 @@ public class HaeanFill {
             else if(f[0].equals("P"))fillBox(file,boxes.get(0),value,style,slot==1);
             else if(f[0].equals("B")) {
                 if(value.isBlank())remove.add(boxes.get(1));
-                else fillBox(file,boxes.get(1),value,style,slot==1);
+                else fillBox(file,boxes.get(1),value,style,slot==1 || (f.length>4 && f[4].equals("keep")));
             }
             else if(f[0].equals("O")) {
                 List<Paragraph> opts=new ArrayList<>();
@@ -251,7 +296,19 @@ public class HaeanFill {
                 setText(file,opts.get(1),lines[lines.length-1],style);
                 for(int i=1;i<lines.length-1;i++) {
                     Paragraph option=new Paragraph();HaeanText.text(file,option,style,0,lines[i],false);
+                    if(f.length>5 && f[5].equals("keep"))keepFollowing(file,option,true);
                     insertAfter.computeIfAbsent(opts.get(0),k->new ArrayList<>()).add(option);
+                }
+                if(f.length>5 && f[5].equals("keep")) {
+                    var reading=insertAfter.get(boxes.get(0));
+                    int begin=start;
+                    if(reading!=null && !reading.isEmpty()) {
+                        keepFollowing(file,reading.get(reading.size()-1),true);
+                        begin=java.util.stream.IntStream.range(start,end).filter(i->s.getParagraph(i)==boxes.get(0)).findFirst().orElseThrow()+1;
+                    }
+                    int finish=java.util.stream.IntStream.range(start,end).filter(i->s.getParagraph(i)==opts.get(1)).findFirst().orElseThrow();
+                    for(int i=begin;i<finish;i++)if(!remove.contains(s.getParagraph(i)))keepFollowing(file,s.getParagraph(i),true);
+                    keepFollowing(file,opts.get(1),false);
                 }
             } else if(f[0].equals("G")) {
                 ControlTable outer=(ControlTable)boxes.get(0).getControlList().get(0);
@@ -299,7 +356,7 @@ public class HaeanFill {
             }
             if(remove.contains(p))s.deleteParagraph(i);
         }
-        if(trimmed25)s.getParagraph(s.getParagraphCount()-1).getHeader().setLastInList(true);
+        if(trimmedExam)s.getParagraph(s.getParagraphCount()-1).getHeader().setLastInList(true);
         var caret=file.getDocInfo().getDocumentProperties().getCaretPosition();
         caret.setListID(0);caret.setParagraphID(0);caret.setPositionInParagraph(0);
         HWPWriter.toFile(file,args[2]);

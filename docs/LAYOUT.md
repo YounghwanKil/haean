@@ -86,3 +86,16 @@ PSAT 자료해석 25번 및 공통지문 35–36번은 이 경로로 실제 한�
 ## 문장 내부 밑줄
 
 작성 데이터의 균형 잡힌 `<u>…</u>` 표시는 HWP 문자 구간의 밑줄 서식으로 삽입한다. `<표>` 같은 시험용 표제는 그대로 보존한다. 중첩·빈 구간·닫히지 않은 밑줄 표시는 오류로 처리하며, 입력 문항 자체는 수정하지 않는다. 재읽기에서는 서식 태그를 제외한 실제 글자를 비교한다. Java 합성 시험으로 탭 뒤 위치·여러 밑줄 구간·기본 글자 서식 보존을 확인한다. 실제 한글에서 밑줄 위치를 확인하는 절차는 별도로 필요하다.
+
+## 언어이해 30문항 실험용 출력
+
+언어이해는 `Brief`를 추리논증으로 바꾸지 않고 별도 `haean.reading_layout` 모듈을 쓴다. 입력은 `passages` 10개, 각 지문의 `paragraphs`와 `questions` 3개이며 문항 번호는 1–30 순서다. 문항에는 `stem`, `box`(선택), `options` 5개, `answer`(1–5), `explanation`, `option_explanations` 5개, `difficulty`, `cognitive_task`가 필요하다. 지문에는 제작용 `title`과 `domain`을 둔다. 학생용 문제지에 제작 제목·분류·정답을 넣지 않는다.
+
+```sh
+.venv/bin/python -m haean.reading_layout BOOK.json --template QUESTIONS.hwp --out runs/reading/questions.hwp
+.venv/bin/python -m haean.reading_layout BOOK.json --template SOLUTIONS.hwp --out runs/reading/solutions.hwp --kind solutions
+```
+
+기존 40문항 마스터를 복사하여 30문항과 30개 정답으로 정리한다. 긴 공통지문은 연결된 얇은 문단 테두리를 적용해 단·쪽 경계에서 흐르게 하고 각 세트에 `[1~3]`처럼 표시한다. 제목·제1교시·문항 수를 바꾸며 실제 인쇄 쪽 수 확인 후 문제지에 `--total-pages N`을 지정해 새 출력물을 만든다. 내용 재읽기와 양식 삽입은 지원하지만, 회차마다 실제 한글 PDF 전 페이지를 검토해야 한다. 언어이해 고정 평가기·실전 난도 검증·전문가 승인과는 별도인 실험 기능이다.
+
+언어이해 문제지는 발문·보기·다섯 선지가 따로 고립되지 않도록 문단을 묶고 보기 상자의 중간 분할을 막는다. 긴 지문 테두리는 계속 나뉠 수 있다. `--page-start 3`을 추가하면 해당 문항을 새 쪽에서 시작한다. 쪽수와 여백은 다시 한글에서 확인한다.

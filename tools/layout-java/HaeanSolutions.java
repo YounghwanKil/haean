@@ -31,9 +31,9 @@ public class HaeanSolutions {
             if(n.matches("[1-9][0-9]?"))cell(f,cells.get(++i),answers.getOrDefault(Integer.parseInt(n),""),style);
         }
     }
-    static void compactGrid(HWPFile f,ControlTable table,Map<Integer,String> answers,int style) throws Exception {
+    static void compactGrid(HWPFile f,ControlTable table,Map<Integer,String> answers,int style,int size) throws Exception {
         // Retain the master's heading rows and widths. Three number/answer pairs,
-        // nine rows: 1-9, 10-18, 19-25; two unlabeled padding cells at the bottom.
+        // Nine rows for 25 questions, ten rows for 30; unused cells stay blank.
         var rows=table.getRowList();int first=-1;
         for(int i=0;i<rows.size();i++)if(cellText(rows.get(i).getCellList().get(0)).equals("1")){first=i;break;}
         if(first<1)throw new IllegalArgumentException("Unrecognized answer grid");
@@ -47,21 +47,22 @@ public class HaeanSolutions {
             for(int j=0;j<cells.size();j++){cells.get(j).getListHeader().setWidth(width/6);cells.get(j).getListHeader().setTextWidth(width/6);}
         }
         while(rows.size()>first)rows.remove(rows.size()-1);
-        for(int r=0;r<9;r++) {
+        int rowCount=(size+2)/3;
+        for(int r=0;r<rowCount;r++) {
             Row row=new Row();rows.add(row);
             for(int c=0;c<6;c++) {
-                Cell cell=(c%2==0?label:answer).clone();int number=(c/2)*9+r+1;
+                Cell cell=(c%2==0?label:answer).clone();int number=(c/2)*rowCount+r+1;
                 cell.getListHeader().setRowIndex(first+r);cell.getListHeader().setColIndex(c);
                 cell.getListHeader().setWidth(width/6);cell.getListHeader().setTextWidth(width/6);
                 int labelStyle=cell.getParagraphList().getParagraph(0).getHeader().getStyleId();
-                cell(f,cell,number>25?"":(c%2==0?Integer.toString(number):answers.get(number)),c%2==0?labelStyle:style);
+                cell(f,cell,number>size?"":(c%2==0?Integer.toString(number):answers.get(number)),c%2==0?labelStyle:style);
                 row.getCellList().add(cell);
             }
         }
-        table.getTable().setRowCount(first+9);table.getTable().setColumnCount(6);
+        table.getTable().setRowCount(first+rowCount);table.getTable().setColumnCount(6);
         table.getTable().getCellCountOfRowList().clear();table.getTable().getZoneInfoList().clear();
         for(Row row:rows)table.getTable().getCellCountOfRowList().add(row.getCellList().size());
-        table.getHeader().setHeight(table.getHeader().getHeight()-height);
+        table.getHeader().setHeight(table.getHeader().getHeight()-(10-rowCount)*height);
     }
     static void verifyGrid(ControlTable table,Map<Integer,String> answers,int size) throws Exception {
         List<Cell> values=cells(table);Set<Integer> seen=new HashSet<>();
@@ -117,7 +118,7 @@ public class HaeanSolutions {
         for(String line:Files.readAllLines(Path.of(args[1]),StandardCharsets.UTF_8)) {
             String[] f=line.split("\t",-1);
             if(f[0].equals("R")) {for(Section sec:file.getBodyText().getSectionList())HaeanFill.replaceInList(file,sec,HaeanFill.decode(f[1]),HaeanFill.decode(f[2]));continue;}
-            if(f[0].equals("C")){if(!f[1].equals("25"))throw new IllegalArgumentException("Only 25 supported");size=25;continue;}
+            if(f[0].equals("C")){size=Integer.parseInt(f[1]);if(size!=25 && size!=30)throw new IllegalArgumentException("Only 25/30 supported");continue;}
             int slot=Integer.parseInt(f[1]);if(slot<1||slot>40)throw new IllegalArgumentException("Slot out of range");
             ops.computeIfAbsent(slot,k->new ArrayList<>()).add(f);
             if(f[0].equals("A"))answerMap.put(slot,HaeanFill.decode(f[3]));
@@ -134,10 +135,10 @@ public class HaeanSolutions {
         // The master's sample overall commentary is not an assessment of the new exam.
         ControlTable comment=(ControlTable)s.getParagraph(2).getControlList().stream().filter(c->c instanceof ControlTable).findFirst().orElseThrow();
         for(Cell c:cells(comment))cell(file,c,"모델 검토본 · 전문가 최종 검토 전",4);
-        if(size==25) {
-            if(answerMap.size()!=25 || !answerMap.keySet().containsAll(java.util.stream.IntStream.rangeClosed(1,25).boxed().toList()))throw new IllegalArgumentException("Requires 25 complete answers");
-            compactGrid(file,cover,answerMap,answerStyle);compactGrid(file,grid,answerMap,answerStyle);
-            for(int i=s.getParagraphCount()-1;i>=starts.get(25);i--)s.deleteParagraph(i);
+        if(size<40) {
+            if(answerMap.size()!=size || !answerMap.keySet().containsAll(java.util.stream.IntStream.rangeClosed(1,size).boxed().toList()))throw new IllegalArgumentException("Requires complete answers for selected size");
+            compactGrid(file,cover,answerMap,answerStyle,size);compactGrid(file,grid,answerMap,answerStyle,size);
+            for(int i=s.getParagraphCount()-1;i>=starts.get(size);i--)s.deleteParagraph(i);
         }
         for(var entry:ops.entrySet()) {
             int slot=entry.getKey(),start=starts.get(slot-1),end=slot<size?starts.get(slot):s.getParagraphCount();
