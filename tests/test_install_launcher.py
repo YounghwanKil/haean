@@ -50,6 +50,40 @@ def test_status_does_not_count_assembled_views_as_new_reviews(tmp_path, monkeypa
     assert "실행 중 여부" in output
 
 
+def test_current_exam_selection_preserves_artifacts_and_detects_changed_snapshot(tmp_path, monkeypatch, capsys):
+    import json
+    module = load('launch'); monkeypatch.setattr(module, 'ROOT', tmp_path)
+    result = {'exam':'leet','subject':'추리논증','requested':40,'written':40,
+              'errors':[],'human_approved':False,'layout_verified':False}
+    for name in ['v1','v2']:
+        run = tmp_path/'runs'/name;run.mkdir(parents=True)
+        (run/'assembled.json').write_text(json.dumps(result))
+    old = (tmp_path/'runs/v1/assembled.json').read_bytes()
+    module.track_exam('runs/v1');module.track_exam(str(tmp_path/'runs/v2'))
+    assert (tmp_path/'runs/v1/assembled.json').read_bytes()==old
+    registry = json.loads((tmp_path/'runs/current-exams.json').read_text())
+    assert len(registry['exams'])==1
+    module.status();text=capsys.readouterr().out
+    assert 'runs/v2' in text and '사람 승인: 미확인' in text
+    result['errors']=['recheck required']
+    (tmp_path/'runs/v2/assembled.json').write_text(json.dumps(result))
+    module.status();text=capsys.readouterr().out
+    assert '지정 후 조립 기록이 변경됨' in text and '조립 당시 오류 1건' in text
+
+
+def test_current_exam_rejects_outside_runs_and_survives_missing_output(tmp_path, monkeypatch, capsys):
+    import json
+    module=load('launch');monkeypatch.setattr(module,'ROOT',tmp_path)
+    with pytest.raises(ValueError,match='runs/'):
+        module.track_exam('../another-project')
+    run=tmp_path/'runs/example';run.mkdir(parents=True)
+    source=run/'assembled.json';source.write_text(json.dumps({'exam':'psat7','subject':'자료해석','requested':25,'written':1,'errors':['missing']}))
+    module.track_exam('runs/example')
+    source.unlink()
+    module.status()
+    assert '현재 회차 기록 확인 필요' in capsys.readouterr().out
+
+
 def test_doctor_missing_install_has_actions_and_does_not_create_database(tmp_path, monkeypatch, capsys):
     import json
     module=load("launch"); monkeypatch.setattr(module,"ROOT",tmp_path)

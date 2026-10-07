@@ -1,6 +1,7 @@
 """Small subscription-native launcher. No credentials are read or modified."""
 from __future__ import annotations
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -22,6 +23,7 @@ def help_text():
   haean setup            스킬과 로컬 도구 설치
   haean doctor           설치·로그인 상태 점검 (JSON)
   haean status           로컬 문항 작업 현황
+  haean track-exam RUN   status에 표시할 현재 회차 지정
   haean setup-figures     도식·그래프 검토 도구 설치
   haean setup-layout     한글 양식 도구 설치
   haean "작업 요청"      Astra와 해안 작업 시작
@@ -39,6 +41,7 @@ CLI 하단: 실제 모델 · 작업 폴더 · 남은 컨텍스트 · 사용량 �
 def status():
     from collections import Counter
     banner()
+    current_exam_status()
     states = Counter()
     unreadable = 0
     # Only authoritative run states, not process liveness or expert quality.
@@ -56,6 +59,65 @@ def status():
     for state, count in sorted(states.items()): print(f"  {labels.get(state, state)}: {count}묶음")
     if unreadable: print(f"  읽기 대기/오류: {unreadable}개")
     print("이전 수정 실행도 포함한 기록입니다. 실행 중 여부·전문가 승인·납품 완료를 뜻하지 않습니다.")
+
+
+def exam_registry():
+    path = ROOT / 'runs/current-exams.json'
+    if not path.exists(): return {'version': 1, 'exams': {}}
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict) or data.get('version') != 1 or not isinstance(data.get('exams'), dict):
+        raise ValueError('현재 회차 목록 형식이 올바르지 않습니다: ' + str(path))
+    return data
+
+
+def tracked_exam_path(value):
+    run = Path(value).expanduser()
+    run = (ROOT / run).resolve() if not run.is_absolute() else run.resolve()
+    try: run.relative_to((ROOT / 'runs').resolve())
+    except ValueError: raise ValueError('현재 회차는 이 저장소의 runs/ 안에서 지정하세요')
+    return run
+
+
+def track_exam(value):
+    run = tracked_exam_path(value)
+    content = (run / 'assembled.json').read_bytes()
+    result = json.loads(content)
+    if not isinstance(result, dict) or not all(k in result for k in ['exam', 'subject', 'requested', 'written', 'errors']):
+        raise ValueError('assembled.json이 있는 회차를 지정하세요')
+    key = f"{result['exam']} / {result['subject']} / {result['requested']}문항"
+    registry = exam_registry()
+    registry['exams'][key] = {'run': str(run.relative_to(ROOT)),
+                              'assembled_sha256': hashlib.sha256(content).hexdigest()}
+    path = ROOT / 'runs/current-exams.json'
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(registry, ensure_ascii=False, indent=2))
+    temporary.replace(path)
+    print(f'현재 회차 지정: {key}\n{run}\n검토·승인 상태는 변경하지 않았습니다.')
+
+
+def current_exam_status():
+    try: entries = exam_registry()['exams']
+    except (OSError, ValueError) as exc:
+        print(f'현재 회차 목록 확인 필요: {exc}')
+        return
+    if not entries:
+        print('현재 회차 미지정. haean track-exam runs/회차폴더 로 지정하세요.')
+        return
+    print('현재 회차')
+    for key, entry in entries.items():
+        try:
+            run = tracked_exam_path(entry['run'])
+            content = (run / 'assembled.json').read_bytes(); result = json.loads(content)
+            changed = hashlib.sha256(content).hexdigest() != entry['assembled_sha256']
+            print(f"  {key}: {result['written']}/{result['requested']} · 조립 당시 오류 {len(result['errors'])}건")
+            print(f'    {run}')
+            if changed: print('    지정 후 조립 기록이 변경됨. 현재 파일과 검토 이력을 확인하세요.')
+            print('    사람 승인: ' + ('기록 있음' if result.get('human_approved') else '미확인')
+                  + ' · 한글 배치 검증: ' + ('기록 있음' if result.get('layout_verified') else '미확인'))
+            if (run / 'hwp').is_dir(): print(f"    한글 산출물: {run / 'hwp'}")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f'  {key}: 현재 회차 기록 확인 필요 ({exc})')
+    print('조립 기록은 문항·회차 전체의 품질 승인이나 실행 중 여부를 뜻하지 않습니다.\n')
 
 
 def link_skill(source: Path, target: Path):
@@ -165,6 +227,9 @@ def main():
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup_layout.py")], check=True).returncode
     if args in (["doctor"], ["doctor", "--check"]): return doctor(strict="--check" in args)
     if args == ["status"]: return status()
+    if args and args[0] == 'track-exam':
+        if len(args) != 2: raise ValueError('사용법: haean track-exam runs/회차폴더')
+        return track_exam(args[1])
     if args == ["--version"]:
         print("haean " + tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"])
         return 0
