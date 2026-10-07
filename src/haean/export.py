@@ -17,7 +17,7 @@ def export_review(run: Path):
         from .figures import render_item
         figure_paths = render_item(item, run/'figures'/str(i)) if item.figures else {}
         def figure_html(placement):
-            return ''.join(f'<figure><img style="max-width:100%" src="{esc(str(figure_paths[f.id].relative_to(run)))}" alt="{esc(f.title)}"><figcaption>{esc(f.note if f.kind != 'argument' else '')}</figcaption></figure>'
+            return ''.join(f'<figure><img style="max-width:100%" src="{esc(str(figure_paths[f.id].relative_to(run)))}" alt="{esc(f.title)}"><figcaption>{esc(f.note if f.kind != "argument" else "")}</figcaption></figure>'
                            for f in item.figures if f.placement == placement)
         block = f"<article><h2>{i}. {esc(item.stem)}</h2>" + para(item.passage)
         block += figure_html('passage')
