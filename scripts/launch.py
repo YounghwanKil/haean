@@ -14,16 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 STATUS_ITEMS = ["model-with-reasoning", "current-dir", "context-remaining", "five-hour-limit", "weekly-limit"]
 
 
-LOGO = (
-    "██╗  ██╗ █████╗ ███████╗ █████╗ ███╗   ██╗",
-    "██║  ██║██╔══██╗██╔════╝██╔══██╗████╗  ██║",
-    "███████║███████║█████╗  ███████║██╔██╗ ██║",
-    "██╔══██║██╔══██║██╔══╝  ██╔══██║██║╚██╗██║",
-    "██║  ██║██║  ██║███████╗██║  ██║██║ ╚████║",
-    "╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝",
-)
-
-
 def banner(madmax=False, *, large=False, skill="haean"):
     animate = large and sys.stdout.isatty() and os.environ.get("TERM") != "dumb" and os.environ.get("HAEAN_NO_ANIMATION") != "1"
     color = sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
@@ -32,23 +22,20 @@ def banner(madmax=False, *, large=False, skill="haean"):
     width = shutil.get_terminal_size(fallback=(80, 24)).columns
     mode = "MADMAX · 승인/샌드박스 생략" if madmax else "STANDARD · 기존 권한 설정"
     print()
-    if large and width >= max(map(len, LOGO)) + 4:
-        for row in LOGO:
-            print(f"{accent}  {row}{reset}", flush=True)
+    if large:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from branding import welcome_lines
+        for line in welcome_lines(width, color, madmax, skill):
+            print(line, flush=True)
             if animate:
-                time.sleep(0.12)
-        print(f"{accent}  ≋≋≋  H A E A N  /  해안{reset}")
+                time.sleep(0.05)
+        if animate:
+            time.sleep(0.8)
     else:
         print(f"{accent}  ≋≋≋  H A E A N  ·  해안{reset}")
-    print("  LEET 추리논증 · 언어이해 / PSAT 5급 · 7급")
-    print(f"  {mode}")
-    if large:
-        print(f"  작업 스킬  ${skill}")
-        print("  출제 → 독립 풀이 → 검토·수정 → 한글 출력")
-        print("  자연어로 요청하세요.  스킬 목록: haean skills")
+        print("  LEET 추리논증 · 언어이해 / PSAT 5급 · 7급")
+        print(f"  {mode}")
     print(flush=True)
-    if animate:
-        time.sleep(0.8)
 
 
 def skill_catalog():
