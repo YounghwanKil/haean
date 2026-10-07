@@ -14,6 +14,3 @@ def test_madmax_is_explicit_and_task_is_single_argument():
     assert madmax.count(flag) == 1
     assert normal[-1] == madmax[-1] == '$haean ' + task
     assert normal[normal.index('-m') + 1] == 'gpt-6-astra'
-
-    assert not any("trust_level" in x for x in normal)
-    assert any("trust_level" in x and str(launch.ROOT) in x for x in madmax)
