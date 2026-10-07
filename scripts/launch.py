@@ -22,6 +22,7 @@ def help_text():
   haean setup            스킬과 로컬 도구 설치
   haean doctor           설치·로그인 상태 점검 (JSON)
   haean status           로컬 문항 작업 현황
+  haean setup-figures     도식·그래프 검토 도구 설치
   haean setup-layout     한글 양식 도구 설치
   haean "작업 요청"      Astra와 해안 작업 시작
 
@@ -119,12 +120,16 @@ def doctor(strict=False):
     tools_ready = bool(dependencies and dependencies.returncode == 0)
     humanizer = (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists()
     sources = source_status()
+    figures = subprocess.run([str(python), "-c", "import matplotlib, PIL"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=10) if python.exists() else None
+    figures_ready = bool(figures and figures.returncode == 0)
     actions = []
     if not codex: actions.append("Codex CLI를 설치하세요: https://learn.chatgpt.com/docs/cli")
     elif not logged_in: actions.append("codex login 으로 ChatGPT 구독 계정에 로그인하세요.")
     if not tools_ready or not humanizer or not all(s['discovered'] for s in skills):
         actions.append("./haean setup 으로 프로젝트 도구와 스킬을 설치하세요.")
     if sources['state'] != 'indexed': actions.append('haean tools import /허용된/자료경로 로 출제 참고자료를 가져오세요.')
+    if not figures_ready: actions.append("도식·그래프 문항은 haean setup-figures 로 이미지 검토 도구를 설치하세요.")
     layout_ready = (ROOT / "data/bin/hwp").is_file() and (ROOT / "data/bin/HaeanFill.class").is_file()
     if not layout_ready: actions.append("한글 출력이 필요하면 haean setup-layout 을 실행하고 팀의 빈 양식을 준비하세요.")
     ready = bool(codex and logged_in and tools_ready and humanizer and skills
@@ -137,6 +142,7 @@ def doctor(strict=False):
                       "runtime_role_loading": "not_verified",
                       "runtime_role_note": "역할 파일 검증과 실제 로딩은 다릅니다. 프로젝트 신뢰와 세션 도구를 확인하세요. 미지원 시 role 명령의 지침 전달 경로를 사용합니다.",
                       "sources": sources, "layout_tools_installed": layout_ready,
+                      "figure_dependencies_installed": figures_ready, "graphviz": shutil.which('dot'),
                       "native_layout_verified": False, "next_actions": actions}, ensure_ascii=False, indent=2))
     return 1 if strict and not ready else 0
 
@@ -144,6 +150,14 @@ def doctor(strict=False):
 def main():
     args = sys.argv[1:]
     if args == ["setup"]: return setup()
+    if args == ["setup-figures"]:
+        python = ROOT / ".venv/bin/python"
+        if not python.exists(): raise ValueError("먼저 haean setup 을 실행하세요")
+        subprocess.run([str(python), "-m", "pip", "install", "-e", ".[layout]"], cwd=ROOT, check=True)
+        print("그림 검토용 Python 도구 설치 완료.")
+        if not shutil.which('dot'): print("논증 도식에는 Graphviz도 필요합니다. macOS: brew install graphviz / Linux: sudo apt install graphviz")
+        print("한국어 폰트는 팀 폰트 또는 설치된 NanumGothic/Noto Sans CJK KR/AppleGothic/맑은 고딕을 사용합니다.")
+        return 0
     if args == ["setup-layout"]:
         python = ROOT / ".venv/bin/python"
         if not python.exists(): raise ValueError("먼저 ./haean setup 을 실행하세요")

@@ -23,7 +23,7 @@ def strict_schema(value):
 
 
 class CodexProvider:
-    def __init__(self, model="gpt-6-astra", max_calls=12, timeout=600, trace_dir=None):
+    def __init__(self, model="gpt-6-astra", max_calls=12, timeout=600, trace_dir=None, visual_inputs=True):
         self.binary = shutil.which("codex")
         if not self.binary: raise ValueError("Codex CLI가 필요합니다. codex login으로 ChatGPT 로그인하세요.")
         login = subprocess.run([self.binary, "login", "status"], capture_output=True, text=True)
@@ -31,6 +31,7 @@ class CodexProvider:
             raise ValueError("ChatGPT 구독 로그인 상태가 아닙니다. codex login을 실행하세요.")
         self.model, self.max_calls, self.timeout = model, max_calls, timeout
         self.calls, self.usage = 0, []
+        self.visual_inputs = visual_inputs
         self.trace_dir = Path(trace_dir) if trace_dir else None
         if self.trace_dir: self.trace_dir.mkdir(parents=True, exist_ok=True)
 
@@ -41,16 +42,35 @@ class CodexProvider:
             root = Path(folder)
             schema_path, output = root / "schema.json", root / "result.json"
             schema_path.write_text(json.dumps(strict_schema(schema.model_json_schema()), ensure_ascii=False))
-            task = instructions + "\n도구·파일 탐색·웹 검색·재위임을 하지 말고 아래 입력만으로 답하라. 최종 출력은 스키마 JSON이다.\n" + json.dumps(payload, ensure_ascii=False)
             prefix = f"{self.calls:02}-{stage}"
+            images, image_manifest = [], []
+            if self.visual_inputs:
+                from .visual_review import review_images, IMAGE_INSTRUCTIONS
+                try:
+                    images, image_manifest = review_images(stage, payload, root / "figures")
+                except Exception as exc:
+                    if self.trace_dir:
+                        (self.trace_dir / f"{prefix}.image-error.json").write_text(json.dumps({
+                            "model_called": False, "stage": stage, "error": str(exc)}, ensure_ascii=False))
+                    raise RuntimeError(f"검토 그림 렌더 실패: {exc}. haean setup-figures 및 Graphviz·한국어 폰트를 확인하세요. 텍스트 검토로 대체하지 않았습니다.") from exc
+                if images:
+                    instructions += IMAGE_INSTRUCTIONS
+                    payload = {**payload, "rendered_images": image_manifest}
+                    if self.trace_dir:
+                        shutil.copytree(root / "figures", self.trace_dir / f"{prefix}.figures")
+            task = instructions + "\n도구·파일 탐색·웹 검색·재위임을 하지 말고 아래 입력만으로 답하라. 최종 출력은 스키마 JSON이다.\n" + json.dumps(payload, ensure_ascii=False)
             if self.trace_dir:
                 (self.trace_dir / f"{prefix}.input.json").write_text(json.dumps({
                     'instructions':instructions, 'payload':payload, 'model':self.model,
                     'schema':json.loads(schema_path.read_text()),
+                    'visual_inputs_enabled': self.visual_inputs, 'images': image_manifest,
+                    'visual_scope': 'rendered_png_only' if images else 'no_images_attached',
                     'task_sha256':hashlib.sha256(task.encode()).hexdigest()}, ensure_ascii=False))
             command = [self.binary, "exec", "--ephemeral", "--skip-git-repo-check", "--json",
                        "-C", str(root), "-s", "read-only", "-m", self.model,
-                       "--output-schema", str(schema_path), "-o", str(output), "-"]
+                       "--output-schema", str(schema_path), "-o", str(output)]
+            for path in images: command.extend(["--image", str(path)])
+            command.append("-")
             env = os.environ.copy()
             for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
                 env.pop(key, None)

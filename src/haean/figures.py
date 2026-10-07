@@ -41,9 +41,9 @@ def chart_geometry(figures):
     return {'y_min':low,'y_max':high,'y_ticks':list(ticks)}
 
 
-def render(figure: Figure, out: Path, geometry=None, show_title=True):
-    import matplotlib
-    matplotlib.use('Agg')
+def configure_font(figure):
+    """Use team fonts or an installed Korean font; never silently emit tofu."""
+    import re
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
     root = Path(__file__).resolve().parents[2]
@@ -52,8 +52,28 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
         for entry in json.loads(inventory.read_text()):
             if 'NanumGothic' in entry['names'] and Path(entry['path']).exists():
                 font_manager.fontManager.addfont(entry['path'])
-                plt.rcParams['font.family'] = font_manager.FontProperties(fname=entry['path']).get_name()
-                break
+                name = font_manager.FontProperties(fname=entry['path']).get_name()
+                plt.rcParams['font.family'] = name
+                return {'family': name, 'path': entry['path']}
+    labels = [figure.title, figure.x_label, figure.y_label, *figure.categories,
+              *(s.name for s in figure.series), *(n.label for n in figure.nodes)]
+    if figure.kind != 'argument': labels.append(figure.note)
+    if re.search(r'[\u1100-\u11ff\u3130-\u318f\u3200-\u32ff\u4e00-\u9fff\uac00-\ud7a3]', ''.join(labels)):
+        for family in ['NanumGothic', 'Noto Sans CJK KR', 'Noto Sans KR', 'AppleGothic', 'Malgun Gothic']:
+            try: path = font_manager.findfont(family, fallback_to_default=False)
+            except ValueError: continue
+            plt.rcParams['font.family'] = family
+            return {'family': family, 'path': path}
+        raise ValueError('한국어 그래프 폰트가 없습니다. NanumGothic 또는 Noto Sans CJK KR을 설치하세요. Linux: sudo apt install fonts-nanum')
+    plt.rcParams['font.family'] = 'DejaVu Sans'
+    return {'family': 'DejaVu Sans', 'path': font_manager.findfont('DejaVu Sans')}
+
+
+def render(figure: Figure, out: Path, geometry=None, show_title=True):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    font = configure_font(figure)
     plt.rcParams['axes.unicode_minus'] = False
     option = figure.placement.startswith('option_')
     numeric_option=option and figure.kind!='argument'
@@ -96,7 +116,7 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=220); fig.savefig(out.with_suffix('.svg')); plt.close(fig)
     receipt = {'figure': figure.model_dump(), 'png': str(out), 'sha256': hashlib.sha256(out.read_bytes()).hexdigest(),
-               'visual_verified': False, 'geometry': geometry,
+               'visual_verified': False, 'geometry': geometry, 'font': font,
                'nonprinted_layout_note': getattr(figure,'layout_note','') or (figure.note if figure.kind == 'argument' else None),
                'note': '지지: 실선 화살표, 반박: 점선 막대 끝. 서로 다른 결합점은 별도 점. 시각 검토 전.'}
     out.with_suffix('.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2))

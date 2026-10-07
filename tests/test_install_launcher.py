@@ -58,7 +58,8 @@ def test_doctor_missing_install_has_actions_and_does_not_create_database(tmp_pat
     assert module.doctor(strict=True)==1
     result=json.loads(capsys.readouterr().out)
     assert not result['core_ready'] and result['runtime_role_loading']=='not_verified'
-    assert result['sources']['state']=='not_imported' and len(result['next_actions'])==4
+    assert result['sources']['state']=='not_imported'
+    assert any('setup-figures' in action for action in result['next_actions'])
     assert not (tmp_path/'data').exists()
 
 
