@@ -87,6 +87,22 @@ def test_latin_chart_needs_no_team_or_korean_font(tmp_path, monkeypatch):
     assert font['family']=='DejaVu Sans' and Path(font['path']).is_file()
 
 
+def test_installed_korean_font_renders_without_private_team_inventory(tmp_path, monkeypatch):
+    pytest.importorskip('matplotlib')
+    import warnings
+    from haean import figures
+    monkeypatch.setattr(figures, '__file__', str(tmp_path/'src/haean/figures.py'))
+    figure = chart([10,20], title='지역별 수출물량', categories=['가','나'],
+                   x_label='지역', y_label='천 톤', note='가상 자료')
+    try: figures.configure_font(figure)
+    except ValueError: pytest.skip('Install NanumGothic or another supported Korean font')
+    with warnings.catch_warnings(record=True) as observed:
+        warnings.simplefilter('always')
+        out = figures.render(figure, tmp_path/'korean.png')
+    assert out.is_file()
+    assert not [w for w in observed if 'Glyph' in str(w.message) and 'missing' in str(w.message)]
+
+
 def test_editor_images_exclude_nonprinted_memos_and_group_argument_choices(tmp_path, draft):
     pytest.importorskip('matplotlib')
     import shutil
