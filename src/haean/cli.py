@@ -108,6 +108,13 @@ def main():
     p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("exam-assemble", help="작성 묶음을 회차 번호대로 모아 검토본 생성")
     p.add_argument("folder", type=Path)
+    p = sub.add_parser("exam-resume", help="기존 이력을 보존하고 미완료 묶음만 새 실행에서 재개")
+    p.add_argument("folder", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--replacement", type=Path, action="append", default=[])
+    p.add_argument("--workers", type=int, default=3)
+    p.add_argument("--max-revisions", type=int, default=2)
+    p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("evaluate", help="고정 과제에서 Astra 출제·검토·평가 실행")
     p.add_argument("--suite", type=Path, default=Path("evals/pilot.json"))
     p.add_argument("--out", type=Path, required=True)
@@ -152,6 +159,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == 'exam-resume':
+        from .exam_resume import resume
+        return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement)
     if a.command == 'import-questions':
         from .question_sources import import_questions
         return import_questions(Corpus(a.db), a.packet)

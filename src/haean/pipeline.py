@@ -57,7 +57,7 @@ def recent_feedback(root, exam, subject):
 
 
 
-def run_pipeline(run: Path, provider, max_revisions=2):
+def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, initial_review=None):
     if not 0 <= max_revisions <= 3:
         raise ValueError("max_revisions must be 0–3")
     if (run / "draft-r0.json").exists():
@@ -67,7 +67,18 @@ def run_pipeline(run: Path, provider, max_revisions=2):
     instructions = writer_prompt(brief)
     allowed = {r["id"] for r in context["references"]}
     try:
-        draft = provider.call("generate", instructions, context, Draft)
+        if initial_draft is None:
+            if initial_review is not None:
+                raise ValueError("재개 검토에는 해당 초안이 필요합니다")
+            draft = provider.call("generate", instructions, context, Draft)
+        else:
+            draft = Draft.model_validate(initial_draft)
+            save(run / "inherited-draft.json", draft.model_dump())
+            if initial_review is not None:
+                save(run / "inherited-review.json", initial_review)
+            if initial_review and initial_review.get("errors"):
+                draft = provider.call("revise", instructions + "\n이전 실행의 지적을 검증해 수정하라. 새 문항으로 교체하지 말고 해설을 동기화하라.",
+                                      {"context": context, "draft": draft.model_dump(), "review": initial_review}, Draft)
         for revision in range(max_revisions + 1):
             save(run / f"draft-r{revision}.json", draft.model_dump())
             errors = validate(draft, brief, allowed, context.get('exam_assignment'))

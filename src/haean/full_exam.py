@@ -40,6 +40,12 @@ def bundles(plan):
     return sorted(result, key=lambda g: min(s['number'] for s in g))
 
 
+def brief_difficulty(group):
+    """Coarse schema level only; retain finer slot labels in exam_assignment."""
+    levels = {s['difficulty'] for s in group}
+    return next(iter(levels)) if len(levels) == 1 and levels <= {'하', '중', '상'} else '중'
+
+
 def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
     if not 1 <= workers <= 3: raise ValueError('동시 출제 묶음은 1–3개')
     plan_path, out = Path(plan_path), Path(out)
@@ -56,7 +62,7 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
     for index, group in enumerate(bundles(plan), 1):
         brief = Brief(exam=plan['exam'], subject=plan['subject'], item_type=group[0]['item_type'],
             topic=' / '.join(s['topic'] for s in group), count=len(group),
-            difficulty=group[0]['difficulty'] if len({s['difficulty'] for s in group}) == 1 else '중',
+            difficulty=brief_difficulty(group),
             shared_passage=bool(group[0].get('shared_passage_id')))
         run = prepare(corpus, brief, out/'bundles')
         context = json.loads((run/'context.json').read_text())
