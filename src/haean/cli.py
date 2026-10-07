@@ -155,6 +155,12 @@ def main():
     p.add_argument("--root", type=Path, default=Path("data/wiki"))
     p.add_argument("--packet", type=Path)
     p.add_argument("--query")
+    for command in ('novelty-index', 'novelty-check'):
+        p = sub.add_parser(command, help='누적 생성물 기록·재사용 후보 대조; 의미상 독창성 판정 아님')
+        p.add_argument('runs', nargs='+', type=Path)
+        p.add_argument('--catalog', type=Path, default=Path('data/generated.sqlite'))
+        if command == 'novelty-check':
+            p.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     try:
         result = dispatch(args)
@@ -169,6 +175,16 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command in {'novelty-index', 'novelty-check'}:
+        from . import novelty
+        rows = novelty.records(a.runs)
+        if a.command == 'novelty-index':
+            return novelty.remember(a.catalog, rows)
+        previous = novelty.history(a.catalog)
+        result = novelty.audit(rows, previous)
+        result['catalog_missing_or_empty'] = not previous
+        save(a.out, result)
+        return result
     if a.command == 'exam-status':
         from .production_status import production_status
         return production_status(a.folder)
