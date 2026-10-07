@@ -89,8 +89,9 @@ def render(figure: Figure, out: Path, geometry=None, show_title=True):
         for index, series in enumerate(figure.series):
             points=x
             if figure.kind == 'bar':
-                width = .8/len(figure.series)
-                points=[v-.4+width*(index+.5) for v in x]
+                step = .8/len(figure.series)
+                width = step * (.82 if len(figure.series) > 1 else 1)
+                points=[v-.4+step*(index+.5) for v in x]
                 ax.bar(points, series.values, width=width,
                        label=series.name, color=str(.25+.6*index/max(1,len(figure.series)-1)), edgecolor='black')
             else: ax.plot(x, series.values, marker=['o','s','^','D'][index%4],
