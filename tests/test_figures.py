@@ -115,6 +115,7 @@ def test_editor_layout_memos_never_reach_blind_or_student_html(draft,tmp_path):
     assert public['figures'][0]['note']==''
     import shutil
     if not shutil.which('dot'):pytest.skip('Graphviz required for HTML export')
+    pytest.importorskip('matplotlib')
     (tmp_path/'candidate.json').write_text(draft.model_dump_json())
     (tmp_path/'status.json').write_text('{"state":"needs_revision"}')
     export_review(tmp_path)
