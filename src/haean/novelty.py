@@ -7,6 +7,7 @@ import sqlite3
 import unicodedata
 from datetime import datetime, timezone
 from .models import Draft
+from .source_resolution import resolve_source
 
 
 def digest(value):
@@ -84,6 +85,7 @@ def memory_index(path, exam, subject, offset=0, limit=40):
     for payload, sha, source in rows[offset:offset+limit]:
         item = json.loads(payload)
         entries.append({'id': item['id'], 'sha256': sha, 'source': source,
+                        'source_resolution': {'origin_path': source, 'status': 'not_checked'},
                         **{key: item.get(key) for key in
                            ('item_type', 'topic', 'cognitive_task', 'essential_conditions')}})
     return {'exam': exam, 'subject': subject, 'total_items': len(rows),
@@ -120,6 +122,8 @@ def memory_get(path, exam, subject, item_ids, all_versions=False):
     missing = wanted - {row['item']['id'] for row in matches}
     if missing:
         raise ValueError('Items not found in requested exam/subject: ' + ', '.join(sorted(missing)))
+    for row in matches:
+        row['source_resolution'] = resolve_source(row['source'], row['item'])
     return {'exam': exam, 'subject': subject, 'all_versions': all_versions,
             'items': matches, 'originality_verified': False}
 
