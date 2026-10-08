@@ -173,10 +173,15 @@ def main():
         else:
             p.add_argument('--item', action='append', required=True)
             p.add_argument('--all-versions', action='store_true')
+    p = sub.add_parser("verify-source-profiles", help="원문 ID·해시·삽입 필드 읽기 전용 검증; 의미 판정 아님")
+    p.add_argument("input", type=Path)
+    p.add_argument("--out", type=Path, help="새 보고서 경로; 기존 파일 덮어쓰기 금지")
     args = parser.parse_args()
     try:
         result = dispatch(args)
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        if args.command == "verify-source-profiles" and not result["valid"]:
+            raise SystemExit(1)
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         print(f"haean: {exc}", file=sys.stderr)
         raise SystemExit(2)
@@ -187,6 +192,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == "verify-source-profiles":
+        from .source_identity import verify
+        return verify(a.input, a.out)
     if a.command in {'novelty-memory', 'novelty-get'}:
         from . import novelty
         if a.command == 'novelty-memory':
