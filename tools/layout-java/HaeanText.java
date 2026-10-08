@@ -13,6 +13,39 @@ import java.util.*;
 
 /** Template-native paragraphs. Input is TSV style-id, break flags, base64 UTF-8 text. */
 public class HaeanText {
+    /** Route only explicit paragraph labels; never rewrite the student's words. */
+    static String editorialRole(String line) {
+        String s=line.strip();
+        if(s.matches("(?:(?:<[^<>\\n]{1,30}>|〈[^〈〉\\n]{1,30}〉)|\\[[^\\[\\]\\n]{1,30}\\])"))return "heading";
+        if(s.startsWith("◦"))return "case";
+        if(s.matches("(?:[갑을병정무기]|[A-Z](?:[ ·]?(?:가설|이론|견해))?|(?:가설|이론|견해) [A-Z])\\s*[:：].+"))return "speaker";
+        return "body";
+    }
+    static int namedStyle(HWPFile file,String name) {
+        var styles=file.getDocInfo().getStyleList();
+        for(int i=0;i<styles.size();i++)if(styles.get(i).getHangulName().equals(name))return i;
+        throw new IllegalArgumentException("Missing template style: "+name);
+    }
+    static void editorialText(HWPFile file,Paragraph p,int base,String line) throws Exception {
+        String role=editorialRole(line);
+        int style=role.equals("heading") ? namedStyle(file,"<사례견해>") :
+            (role.equals("case") || role.equals("speaker")) ? namedStyle(file,"보기내용(내어쓰기)") : base;
+        text(file,p,style,0,line,false);
+        if(role.equals("heading")) {
+            // Clone: do not turn unrelated template text bold through a shared shape.
+            var chars=file.getDocInfo().getCharShapeList();
+            var bold=chars.get(file.getDocInfo().getStyleList().get(style).getCharShapeId()).clone();
+            bold.getProperty().setBold(true);int id=chars.size();chars.add(bold);
+            p.getCharShape().getPositonShapeIdPairList().clear();p.getCharShape().addParaCharShape(0,id);
+            p.getHeader().setCharShapeCount(1);
+            var paras=file.getDocInfo().getParaShapeList();
+            var shape=paras.get(p.getHeader().getParaShapeId()).clone();
+            shape.getProperty1().setTogetherNextPara(true);
+            int paraId=paras.size();paras.add(shape);p.getHeader().setParaShapeId(paraId);
+            file.getDocInfo().getIDMappings().setCharShapeCount(chars.size());
+            file.getDocInfo().getIDMappings().setParaShapeCount(paras.size());
+        }
+    }
     // Only the explicit underline markup used by exam authors is interpreted.
     // Other angle-bracket text (e.g. <표>) remains literal exam content.
     static String underlines(String source, List<int[]> ranges) {

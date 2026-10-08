@@ -84,7 +84,10 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
     execute('convert', template.resolve(), '--to', 'json', '-o', ir)
     doc = json.loads(ir.read_text())
     styles = {s['name']: i for i, s in enumerate(doc['header']['styles'])}
+    editorial_styles = kind == 'questions' and briefs[0]['exam'] == 'leet' and briefs[0]['subject'] == '추리논증'
     required = ['문제', '박스내용(들여쓰기)', '보기내용(내어쓰기)', '선택지', '표-가운데'] if kind == 'questions' else ['글 주제', '정답원문자', '해설정보표내부', '정오판단_설명', '정오판단_선지', '코멘트내용 8pt']
+    if editorial_styles:
+        required.append('<사례견해>')
     for name in required:
         if name not in styles: raise ValueError('템플릿 스타일 없음: '+name)
     enc = lambda t: base64.b64encode(t.encode()).decode()
@@ -122,7 +125,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         if group and not group['first']:
             op('X', slot, '박스내용(들여쓰기)', '', 'column' if any(f.placement in {'passage','statements'} for f in item.figures) else 'flow')
         else:
-            op('P', slot, '박스내용(들여쓰기)', item.passage + ''.join('\n'+t.title+' ('+t.unit+')'+('\n'+t.note if t.note else '') for t in item.tables))
+            op('P', slot, '박스내용(들여쓰기)', item.passage + ''.join('\n'+t.title+(' ('+t.unit+')' if t.unit else '')+('\n'+t.note if t.note else '') for t in item.tables), *(['leet-editorial'] if editorial_styles else []))
         op('B', slot, '보기내용(내어쓰기)', '\n'.join(item.statements))
         opts = [('①②③④⑤'[o.number-1] if o.text.strip() == '①②③④⑤'[o.number-1] else f'{"①②③④⑤"[o.number-1]} {o.text}') for o in item.options]
         rows = ['\t'.join(opts[:3]), '\t'.join(opts[3:])] if max(map(len, opts)) < 18 else opts
@@ -161,6 +164,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'answer_key': {str(n): item.answer for n, item in enumerate(items, start)},
               'answer_grid_and_boxes_reread_verified': kind == 'solutions',
               'editorial_commentary_included': False,
+              'paragraph_style_policy': 'leet-editorial-v1' if editorial_styles else 'template-default',
               'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
               'page_start_slots': page_starts,
               'native_page_count_verified': False,

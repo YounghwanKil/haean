@@ -10,6 +10,8 @@ description: 해안 LEET·PSAT 문항의 독립 풀이, 논리 오류, 해설 �
 3. **haean_editor에게 편집 검토를 위임한다.** 현행 candidate, 독립 풀이 결과, `editorial-instructions.md`(`check`가 급수·과목별 지침을 생성한다), 관련 수정 사례를 읽게 한다. 출력은 `editorial.schema.json`에 맞춘 `editorial-result.json`이다.
 4. 검토 당시 candidate 해시로 `review-result`를 실행한다. A/B 오류는 수정 후 check와 독립 검토를 반복한다. 기본 수정은 2회까지이며 해결되지 않은 것은 이유와 함께 표시한다.
 
+LEET 추리논증의 편집 검토에는 `src/haean/prompts/leet_editorial.md`를 적용한다. `editorial-plan.json`과 `context.json`의 회차 소재·구조 컨텍스트가 있으면 함께 읽는다. 판단에 쓰이는 조건의 이관과 삭제, 주체·정의 변경에 따른 전체 동기화를 확인한다. 이 자료는 블라인드 풀이자에게 전달하지 않는다.
+
 출제자가 자신의 정답을 가리고 다시 생각하는 방식은 독립 컨텍스트가 아니다. 같은 모델을 별도 세션으로 호출하는 것은 컨텍스트 분리이며 모델 간 독립성을 뜻하지 않는다.
 
 위임 도구에 역할 선택 인자가 없으면 `role haean_blind_solver` 또는 `role haean_editor`로 지침을 읽어 작업 메시지에 넣는다. 블라인드 에이전트는 부모 대화를 상속하지 않으며, 참고 경로를 따라 candidate·context·원문 정답을 탐색하지 않도록 공개 입력만 전달한다. 파일 읽기까지 격리할 수 없으면 입력만 받는 별도 Codex `blind` 명령을 우선한다.

@@ -43,6 +43,9 @@ public class HaeanFill {
         return cell;
     }
     static void fillBox(HWPFile file, Paragraph p, String value, int style, boolean firstSlot) throws Exception {
+        fillBox(file,p,value,style,firstSlot,false);
+    }
+    static void fillBox(HWPFile file, Paragraph p, String value, int style, boolean firstSlot, boolean editorial) throws Exception {
         ControlTable table=(ControlTable)p.getControlList().get(0);
         // A split cell continuing into the first page's right column ignores the
         // floating title block in Hancom 2014. Move the whole first-slot box.
@@ -55,7 +58,8 @@ public class HaeanFill {
         for(String line:value.split("\n",-1)) {
             if(line.isBlank())continue; // Paragraph boundaries remain; duplicated blank lines are not extra HWP paragraphs.
             Paragraph para=cell.getParagraphList().addNewParagraph();
-            HaeanText.text(file,para,style,0,line,false);
+            if(editorial)HaeanText.editorialText(file,para,style,line);
+            else HaeanText.text(file,para,style,0,line,false);
         }
         if(cell.getParagraphList().getParagraphCount()==0)HaeanText.text(file,cell.getParagraphList().addNewParagraph(),style,0,"",false);
         cell.getParagraphList().getParagraph(cell.getParagraphList().getParagraphCount()-1).getHeader().setLastInList(true);
@@ -280,7 +284,7 @@ public class HaeanFill {
                 setText(file,s.getParagraph(start),slot+". "+value,style);
                 if(slot>1) {s.getParagraph(start).getHeader().getDivideSort().setDividePage(false);s.getParagraph(start).getHeader().getDivideSort().setDivideColumn(true);}
             }
-            else if(f[0].equals("P"))fillBox(file,boxes.get(0),value,style,slot==1);
+            else if(f[0].equals("P"))fillBox(file,boxes.get(0),value,style,slot==1,f.length>4 && f[4].equals("leet-editorial"));
             else if(f[0].equals("B")) {
                 if(value.isBlank())remove.add(boxes.get(1));
                 else fillBox(file,boxes.get(1),value,style,slot==1 || (f.length>4 && f[4].equals("keep")));

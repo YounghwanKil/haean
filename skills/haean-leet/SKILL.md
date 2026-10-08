@@ -5,9 +5,11 @@ description: 해안 LEET 추리논증 문항을 기출과 수정 이력에 근�
 
 # LEET 출제
 
-Codex가 직접 초안을 작성한다. 저장소의 `src/haean/prompts/haean.md`, `src/haean/prompts/leet.md`와 해당 run의 `request.md`, `draft.schema.json`을 읽는다. 전체 위키를 한꺼번에 읽지 말고 동일 인지 과제의 기출과 관련 수정 사례를 2~6개 살핀다.
+Codex가 직접 초안을 작성한다. 저장소의 `src/haean/prompts/haean.md`, `src/haean/prompts/leet.md`, `src/haean/prompts/leet_editorial.md`와 해당 run의 `request.md`, `draft.schema.json`을 읽는다. 전체 위키를 한꺼번에 읽지 말고 동일 인지 과제의 기출과 관련 수정 사례를 2~6개 살핀다.
 
 최신 통합 엑셀의 반복 형식 44종과 위키의 195종·ATG 체계는 다른 분류다. 닮지 않은 문항을 특정 유형에 억지로 끼워 넣지 않는다. 기출의 배치·기호·조건 구조까지 두고 소재만 바꾸지 않는다.
+
+회차의 `exam_editorial_context`가 있으면 배정된 묶음 밖의 소재·판단 구조도 먼저 대조한다. `editorial-plan.json`의 선택 근거는 기존 design_summary에 남긴다. 배정 변경이 필요하면 총괄에게 충돌 ID를 반환한다.
 
 핵심 판단 과제, 유일한 정답의 근거, 매력적인 오답의 오류 경로를 설계한 뒤 지문·보기·선지·해설을 함께 작성한다. 법률·과학 소재의 전문 지식은 지문 안에서 제공한다. 계산량이나 생소한 용어만으로 난도를 올리지 않는다.
 

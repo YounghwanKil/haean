@@ -67,6 +67,10 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
         run = prepare(corpus, brief, out/'bundles')
         context = json.loads((run/'context.json').read_text())
         context['exam_assignment'] = group
+        from .leet_editorial import exam_editorial_context
+        editorial_context = exam_editorial_context(plan, group)
+        if editorial_context is not None:
+            context['exam_editorial_context'] = editorial_context
         if any(s.get('special_design') == 'argument_structure' for s in group):
             from .pipeline import prompt
             context['argument_structure_instructions'] = prompt('argument_structure')
@@ -82,6 +86,8 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
         save(run/'context.json', context)
         with (run/'request.md').open('a') as f:
             f.write('\n\n회차 배정:\n'+json.dumps(group, ensure_ascii=False, indent=2))
+            if editorial_context is not None:
+                f.write('\n\n회차 소재·구조 대조:\n'+json.dumps(editorial_context, ensure_ascii=False, indent=2))
         jobs.append({'bundle': index, 'run': str(run.resolve()), 'slots': [s['number'] for s in group],
                      'ids': [s['id'] for s in group], 'state': 'prepared'})
     manifest = {'exam': plan['exam'], 'subject': plan['subject'], 'total': len(plan['slots']), 'jobs': jobs,
