@@ -88,7 +88,9 @@ def test_memory_pages_and_explicit_version_retrieval(tmp_path):
         ids.extend(item['id'] for item in page['items'])
         offset = page['next_offset']
     assert ids == [x['item']['id'] for x in rows]
-    assert memory_get(path, 'leet', '추리논증', ['item-000'])['items'] == [old]
+    retrieved = memory_get(path, 'leet', '추리논증', ['item-000'])['items'][0]
+    assert {key: retrieved[key] for key in old} == old
+    assert retrieved['source_resolution']['status'] == 'unresolved'
     versions = memory_get(path, 'leet', '추리논증', ['item-000'], all_versions=True)['items']
     assert {x['sha256'] for x in versions} == {old['sha256'], revised['sha256']}
 
