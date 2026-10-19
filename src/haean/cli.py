@@ -86,6 +86,12 @@ def main():
     p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("export")
     p.add_argument("run", type=Path)
+    p = sub.add_parser("review-packet", help="사람 검토용 문제·해설·응답 양식을 버전에 고정해 분리")
+    p.add_argument("source", type=Path, help="candidate가 있는 run 또는 assembled.json 회차")
+    p.add_argument("--out", type=Path, required=True)
+    p = sub.add_parser("review-collect", help="버전·문항 번호를 대조해 검토 응답 원문 수집; 자동 승인 아님")
+    p.add_argument("packet", type=Path)
+    p.add_argument("response", type=Path)
     p = sub.add_parser("feedback")
     p.add_argument("run", type=Path)
     p.add_argument("--item", required=True)
@@ -95,6 +101,7 @@ def main():
     p.add_argument("--reviewer", required=True)
     p.add_argument("--severity", choices=["A", "B", "C"], required=True)
     p.add_argument("--origin", choices=["human", "model"], default="human")
+    p.add_argument("--candidate-sha", help="검토자가 읽은 candidate.json의 SHA-256; 출력물 의견에는 지정")
     p = sub.add_parser("feedback-note", help="공통 텍스트 피드백을 개선 실험 입력으로 보관")
     p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"], required=True)
     p.add_argument("--subject")
@@ -309,8 +316,13 @@ def dispatch(a):
         from .review_evidence import prepare_editor_review
         return prepare_editor_review(a.run, a.blind)
     if a.command == "export": return export_review(a.run)
+    if a.command in {"review-packet", "review-collect"}:
+        from .human_review import create_packet, collect_packet
+        if a.command == "review-packet": return create_packet(a.source, a.out)
+        return collect_packet(a.packet, a.response)
     if a.command == "feedback":
-        return feedback(a.run, a.item, feedback_text(a), a.reviewer, a.severity, getattr(a, "origin", "human"))
+        return feedback(a.run, a.item, feedback_text(a), a.reviewer, a.severity, getattr(a, "origin", "human"),
+                        expected_sha=getattr(a, "candidate_sha", None))
     if a.command in {"check", "review-result"}:
         context = json.loads((a.run / "context.json").read_text())
         brief = Brief.model_validate(context["brief"])

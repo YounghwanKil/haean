@@ -15,6 +15,8 @@ scripts/haean-tool blind RUN
 # 새 편집 양식으로 편집 검토를 위임한 뒤 결과 제출:
 scripts/haean-tool review-result RUN RUN/blind-result.json RUN/editorial-result.json --candidate-sha SHA
 scripts/haean-tool export RUN
+scripts/haean-tool review-packet RUN --out runs/review-packet
+scripts/haean-tool review-collect runs/review-packet 검토응답.json
 scripts/haean-tool feedback RUN --item ITEM-001 --reviewer 팀검토자 --severity A --text '이의 제기 시점이 없습니다.'
 scripts/haean-tool feedback RUN --item ITEM-001 --reviewer 팀검토자 --severity B --file 검토의견.txt
 scripts/haean-tool feedback-note --exam psat7 --subject 자료해석 --reviewer 팀검토자 --file 검토의견.txt
@@ -25,6 +27,8 @@ scripts/haean-tool plan --exam psat5 --subject 상황판단 --out runs/plan.json
 `RUN`은 prepare가 출력한 경로다. `check`는 풀이 양식을 만들고, 풀이 완료 후 `editor-prepare`가 편집자가 대조할 풀이 사본과 편집 양식을 만든다. CLI `blind`는 이 준비까지 수행한다. 검토자는 읽은 버전의 `candidate.sha256`과 양식의 `input_binding`을 보관하고 `{result, evidence}` 형식으로 결과를 반환한다. `review-result`에는 **검토 당시 값과 결과**를 전달한다. 문항·지침·명세·요청 또는 편집 준비에 묶인 풀이가 다르면 거부된다. 풀이를 교체하거나 편집 준비를 새로 했다면 편집 검토도 다시 한다. 과거 결과에 최신 템플릿을 붙이지 않는다. 외부 검토자의 명시 기록은 검토 진위의 암호학적 보증은 아니다.
 
 공통 텍스트 피드백은 `data/feedback/`에 원문·작성자·급수·과목·ID를 보존한다. `--exam team`은 공통 의견이며 모델 의견에는 `--origin model`을 붙인다. 등록은 지침 채택이 아니다. haean-evolve가 근거 문항과 대조해 후보 패치·평가 결과에 연결한다.
+
+출력물에 대한 문항 피드백은 `feedback --candidate-sha 검토한_SHA`로 전달한다. 생략한 기존 호출은 제출 순간 파일 해시만 기록하며 검토 버전 확인을 뜻하지 않는다. 회차의 `items/NN`은 편집 뷰이므로 [사람 검토 패킷](../../../docs/HUMAN_REVIEW.md)에 기록된 `parent_run`에 의견을 연결한다. 검토 수집, 수정 필요 기록, 실제 사람 체크포인트는 별도 단계다.
 
 `blind`는 현재 ChatGPT 로그인으로 `codex exec`를 실행한다. API 키를 사용하지 않는다. 임시 작업 폴더와 새 대화에 수험생용 내용만 전달하고, 도구 사용이 감지되면 독립 검토 결과로 채택하지 않는다. 이용 중인 Codex의 사용량 한도는 적용된다.
 

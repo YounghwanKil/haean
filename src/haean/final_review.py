@@ -11,16 +11,38 @@ def candidate_sha(run):
     return hashlib.sha256((run / 'candidate.json').read_bytes()).hexdigest()
 
 
+def _load_status(run, sha):
+    status = json.loads((run / 'status.json').read_text())
+    if not isinstance(status, dict) or not isinstance(status.get('state'), str) or not status['state']:
+        raise ValueError('문항 검토 상태가 불완전합니다. 현행 문항의 검토 상태를 확인하세요')
+    if 'candidate_sha256' in status and status['candidate_sha256'] != sha:
+        raise ValueError('검토 상태의 문항 해시가 현재 문항과 다릅니다. 현행 문항을 다시 검토하세요')
+    return status
+
+
+def _final_status(run, sha):
+    status = _load_status(run, sha)
+    if status['state'] == 'needs_revision' or status.get('errors'):
+        raise ValueError('미해결 수정 의견을 먼저 처리하세요')
+    if status['state'] not in {'awaiting_final_formal_review', 'awaiting_human_final_decision'}:
+        raise ValueError('사전 검토가 완료되지 않았습니다. 독립 검토와 사람 검토 상태를 확인하세요')
+    return status
+
+
 def human_checkpoint(run: Path, reviewer: str, expected_sha: str, note: str):
     if not reviewer.strip() or not note.strip(): raise ValueError('실제 검토자와 검토 기록이 필요합니다')
     if expected_sha != candidate_sha(run): raise ValueError('사람이 검토한 문항 해시가 현재 문항과 다릅니다')
+    status = _load_status(run, expected_sha)
     record = {'reviewer': reviewer, 'note': note, 'candidate_sha256': expected_sha,
               'recorded_at': datetime.now(timezone.utc).isoformat(), 'decision': 'reviewed_not_delivery_approved'}
     history = run / 'human-history'; history.mkdir(exist_ok=True)
     save(history / f'{len(list(history.glob("*.json"))):03}.json', record)
     save(run / 'human-checkpoint.json', record)
-    save(run / 'status.json', {'state': 'awaiting_final_formal_review', 'human_approved': False,
-                               'human_reviewed': True, 'candidate_sha256': expected_sha})
+    # A human review record does not resolve outstanding review work or errors.
+    if status['state'] in {'awaiting_human_review', 'awaiting_final_formal_review', 'awaiting_human_final_decision'} and not status.get('errors'):
+        status['state'] = 'awaiting_final_formal_review'
+    status.update(human_approved=False, human_reviewed=True, candidate_sha256=expected_sha)
+    save(run / 'status.json', status)
     return record
 
 
@@ -29,8 +51,7 @@ def prepare_final(run: Path):
     sha = candidate_sha(run)
     if checkpoint['candidate_sha256'] != sha:
         raise ValueError('사람 검토 이후 문항이 바뀌었습니다. 현행 문항의 사람 검토가 필요합니다')
-    status = json.loads((run / 'status.json').read_text())
-    if status.get('state') == 'needs_revision': raise ValueError('미해결 수정 의견을 먼저 처리하세요')
+    _final_status(run, sha)
     draft = Draft.model_validate_json((run / 'candidate.json').read_text())
     packet = {'candidate_sha256': sha, 'draft': draft.model_dump(), 'human_checkpoint': checkpoint,
               'brief': json.loads((run / 'brief.json').read_text()),
@@ -49,11 +70,12 @@ def final_review(run: Path, provider):
     ids = {i['id'] for i in packet['draft']['items']}
     if any(i.item_id not in ids for r in (formal, quality) for i in r.issues):
         raise ValueError('검토 결과에 알 수 없는 문항 ID가 있습니다')
+    status = _final_status(run, packet['candidate_sha256'])
     result = {'candidate_sha256': packet['candidate_sha256'], 'formal': formal.model_dump(),
               'quality_advice': quality.model_dump(), 'human_approved': False}
     save(run / 'final-review.json', result)
     save(run / 'final-usage.json', getattr(provider, 'usage', []))
-    save(run / 'status.json', {'state': 'awaiting_human_final_decision', 'human_approved': False,
-                               'candidate_sha256': packet['candidate_sha256'],
-                               'formal_issue_count': len(formal.issues)})
+    status.update(state='awaiting_human_final_decision', human_approved=False,
+                  candidate_sha256=packet['candidate_sha256'], formal_issue_count=len(formal.issues))
+    save(run / 'status.json', status)
     return result

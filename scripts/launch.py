@@ -108,6 +108,9 @@ def help_text():
   haean skills psat      특정 스킬 설명·호출 예시
   haean skill psat "요청" PSAT 스킬로 바로 시작
   haean status           로컬 문항 작업 현황
+  haean tools --help     자료·회차 구성·검토 명령 목록
+  haean tools compose --help       선택 회차 설계
+  haean tools review-packet --help 사람 검토용 묶음 준비
   haean track-exam RUN   status에 표시할 현재 회차 지정
   haean setup-figures     도식·그래프 검토 도구 설치
   haean setup-layout     한글 양식 도구 설치

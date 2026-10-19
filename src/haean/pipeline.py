@@ -144,22 +144,34 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
         save(run / "usage.json", getattr(provider, "usage", []))
 
 
-def feedback(run: Path, item_id: str, text: str, reviewer: str, severity: str, origin="human"):
+def feedback(run: Path, item_id: str, text: str, reviewer: str, severity: str, origin="human", *, expected_sha=None):
     if not text.strip() or not reviewer.strip():
         raise ValueError("검토자와 피드백을 입력하세요")
     if origin not in {"human", "model"}:
         raise ValueError("origin은 human 또는 model")
-    draft = Draft.model_validate_json((run / "candidate.json").read_text())
+    if severity not in {"A", "B", "C"}:
+        raise ValueError("severity는 A, B 또는 C")
+    candidate = (run / "candidate.json").read_bytes()
+    candidate_sha = hashlib.sha256(candidate).hexdigest()
+    if expected_sha is not None and expected_sha != candidate_sha:
+        raise ValueError("검토한 문항과 현재 candidate의 해시가 다릅니다. 의견을 현행 버전에 붙일 수 없습니다.")
+    draft = Draft.model_validate_json(candidate)
     if item_id not in {i.id for i in draft.items}:
         raise ValueError("해당 run에 없는 문항 ID")
     brief = Brief.model_validate_json((run / "brief.json").read_text())
+    status = json.loads((run / "status.json").read_text())
+    if not isinstance(status, dict) or not isinstance(status.get("state"), str) or not status["state"].strip():
+        raise ValueError("검토 상태가 불완전합니다. 의견을 기록하기 전에 문항 상태를 확인하세요.")
+    if "candidate_sha256" in status and status["candidate_sha256"] != candidate_sha:
+        raise ValueError("검토 상태의 해시가 현재 문항과 다릅니다. 현행 문항 상태를 먼저 확인하세요.")
     entry = {"run": run.name, "item_id": item_id, "exam": brief.exam, "subject": brief.subject,
              "reviewer": reviewer, "severity": severity, "text": text, "origin": origin,
-             "candidate_sha256": hashlib.sha256((run / "candidate.json").read_bytes()).hexdigest(),
+             "candidate_sha256": candidate_sha,
+             "reviewed_candidate_sha256": expected_sha,
+             "version_binding": "reviewer_pinned" if expected_sha is not None else "submission_only",
              "created_at": datetime.now(timezone.utc).isoformat()}
     with (run.parent / "feedback.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    status = json.loads((run / "status.json").read_text())
     status.update(human_approved=False)
     if severity in {"A", "B"}: status["state"] = "needs_revision"
     save(run / "status.json", status)

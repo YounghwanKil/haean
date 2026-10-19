@@ -100,11 +100,13 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 
 로컬 회차 규칙을 갖고 있다면 [40슬롯 형식·내용설계](docs/COMPOSITION.md)를 선택해서 사용할 수 있습니다. `compose design` → `compose bind` → `exam-build --composition-packet`으로 기존 문항 ID와 검토 흐름에 연결합니다. 현재 LEET 추리논증·PSAT 5급용이며, 설계 제안을 문항 품질 검증으로 표시하지 않습니다.
 
-팀원의 자유로운 검토 의견이 개선의 입력입니다. 특정 문항 의견은 현재 문항 해시와 연결하고, 공통 의견은 시험·과목별 피드백함에 원문 그대로 보관합니다. 자연어로 총괄에게 전달하거나 UTF-8 `.txt` 파일을 넣을 수 있습니다.
+팀원의 자유로운 검토 의견이 개선의 입력입니다. 특정 문항 의견은 검토한 버전과 연결하고, 공통 의견은 시험·과목별 피드백함에 원문 그대로 보관합니다. 자연어로 총괄에게 전달하거나 UTF-8 `.txt` 파일을 넣을 수 있습니다.
+
+사람에게 회차를 보내려면 [사람 검토 패킷](docs/HUMAN_REVIEW.md)의 `haean tools review-packet 회차경로 --out 새패킷경로`를 사용합니다. 문제와 해설을 분리하고 번호·ID·버전이 연결된 응답 양식을 만듭니다. `review-collect`로 실제 풀이시간·선지 판단·오류 의견을 회수한 뒤, 확인한 문제를 원 묶음에 적용합니다. 수집만으로 검토 완료나 납품 승인을 기록하지 않습니다.
 
 ```bash
 # 문항별 의견: 이 버전에 대한 지적이라는 연결을 유지
-./haean tools feedback RUN --item ITEM-001 --reviewer 팀검토자 --severity B --file 검토의견.txt
+./haean tools feedback RUN --item ITEM-001 --reviewer 팀검토자 --severity B --candidate-sha '검토 당시 해시' --file 검토의견.txt
 # 여러 문항에 적용될 수 있는 공통 의견
 ./haean tools feedback-note --exam psat7 --subject 자료해석 --reviewer 팀검토자 --file 검토의견.txt
 ./haean tools feedback-notes --exam psat7 --subject 자료해석

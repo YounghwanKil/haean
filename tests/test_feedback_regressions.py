@@ -40,6 +40,8 @@ def test_item_feedback_default_and_legacy_provenance(tmp_path, draft, brief):
     run = item_run(tmp_path, draft, brief)
     entry = feedback(run, "TEST-001", "합성 의견", "tester", "C")
     assert entry["origin"] == "human"
+    assert entry["reviewed_candidate_sha256"] is None
+    assert entry["version_binding"] == "submission_only"
     path = tmp_path / "feedback.jsonl"
     original = path.read_bytes()
     with pytest.raises(ValueError, match="origin"):
@@ -50,6 +52,51 @@ def test_item_feedback_default_and_legacy_provenance(tmp_path, draft, brief):
     legacy = path.read_bytes()
     assert recent_feedback(tmp_path, brief.exam, brief.subject)[0]["origin"] == "unknown"
     assert path.read_bytes() == legacy
+
+
+def test_stale_printed_feedback_is_rejected_without_writes(tmp_path, draft, brief):
+    run = item_run(tmp_path, draft, brief)
+    read_sha = hashlib.sha256((run / "candidate.json").read_bytes()).hexdigest()
+    draft.items[0].explanation += " 수정본"
+    save(run / "candidate.json", draft.model_dump())
+    status = (run / "status.json").read_bytes()
+    with pytest.raises(ValueError, match="해시"):
+        feedback(run, "TEST-001", "옛 출력물 의견", "tester", "B", expected_sha=read_sha)
+    assert not (tmp_path / "feedback.jsonl").exists()
+    assert (run / "status.json").read_bytes() == status
+
+
+def test_feedback_cli_pins_reviewer_version(tmp_path, draft, brief, monkeypatch, capsys):
+    run = item_run(tmp_path, draft, brief)
+    read_sha = hashlib.sha256((run / "candidate.json").read_bytes()).hexdigest()
+    monkeypatch.setattr(sys, "argv", ["haean", "feedback", str(run), "--item", "TEST-001",
+                                      "--reviewer", "synthetic model", "--origin", "model",
+                                      "--severity", "C", "--text", "합성 의견", "--candidate-sha", read_sha])
+    main()
+    entry = json.loads(capsys.readouterr().out)
+    assert entry["reviewed_candidate_sha256"] == read_sha
+    assert entry["version_binding"] == "reviewer_pinned"
+    assert entry["origin"] == "model"
+
+
+def test_invalid_feedback_status_does_not_leave_an_orphan_entry(tmp_path, draft, brief):
+    run = item_run(tmp_path, draft, brief)
+    (run / "status.json").write_text("broken")
+    with pytest.raises(ValueError):
+        feedback(run, "TEST-001", "합성 의견", "tester", "B")
+    assert not (tmp_path / "feedback.jsonl").exists()
+
+
+@pytest.mark.parametrize("status", [None, [], {}, {"state": None}, {"state": " "},
+                                    {"state": "awaiting_human_review", "candidate_sha256": "old"}])
+def test_incomplete_feedback_status_is_rejected_before_append(tmp_path, draft, brief, status):
+    run = item_run(tmp_path, draft, brief)
+    save(run / "status.json", status)
+    original = (run / "status.json").read_bytes()
+    with pytest.raises(ValueError, match="상태"):
+        feedback(run, "TEST-001", "합성 의견", "tester", "B")
+    assert not (tmp_path / "feedback.jsonl").exists()
+    assert (run / "status.json").read_bytes() == original
 
 
 def corpus_for_exam(tmp_path, exam, subject):
