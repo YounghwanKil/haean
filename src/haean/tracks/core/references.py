@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, StrictInt, model_validator
+from pydantic import Field, StrictInt, field_validator, model_validator
 
 from ...models import StrictModel
 from .. import NAMES
@@ -96,6 +96,30 @@ class ClassificationEvidence(StrictModel):
         return (self.manifest, self.source_refs)
 
 
+class ReviewCaseEvidence(StrictModel):
+    """Source snapshots for historical development feedback, not approval."""
+    version: Literal[1] = 1
+    manifest: ReferenceProvenance
+    selection_base: str = Field(min_length=1)
+    case_key: str = Field(min_length=1)
+    family_id: str = Field(min_length=1)
+    origin: Literal["model", "human"]
+    actual_model: str | None
+    source_files: dict[str, ReferenceProvenance] = Field(min_length=1)
+    human_approved: Literal[False] = False
+    semantic_accuracy_verified: Literal[False] = False
+
+    @field_validator("human_approved", "semantic_accuracy_verified", mode="before")
+    @classmethod
+    def unapproved(cls, value):
+        if value is not False:
+            raise ValueError("검토 사례의 승인·정확성은 false여야 합니다")
+        return value
+
+    def provenances(self):
+        return (self.manifest, *self.source_files.values())
+
+
 def _identity(track, grade):
     if track not in NAMES:
         raise ValueError("알 수 없는 트랙: " + track)
@@ -128,6 +152,7 @@ class RefRecord(StrictModel):
     corpus_evidence: CorpusEvidence | None = None
     official_answer_evidence: OfficialAnswerEvidence | None = None
     classification_evidence: ClassificationEvidence | None = None
+    review_case_evidence: ReviewCaseEvidence | None = None
 
     @model_validator(mode="after")
     def identity(self):
@@ -143,6 +168,18 @@ class RefRecord(StrictModel):
             raise ValueError("공식 정답 근거에는 corpus 전사와 별도 정답이 필요합니다")
         if self.classification_evidence and not self.official_answer_evidence:
             raise ValueError("분류 오버레이에는 공식 정답 근거가 필요합니다")
+        if self.review_case_evidence and (self.role != "case" or self.item is not None
+                or self.answer is not None or self.answer_verified or self.corpus_evidence
+                or self.official_answer_evidence or self.classification_evidence):
+            raise ValueError("검토 사례는 case 역할이며 정답·문항 승인으로 승격할 수 없습니다")
+        if self.review_case_evidence is None:
+            try:
+                structured = json.loads(self.text)
+            except (ValueError, TypeError):
+                structured = None
+            if ("source_backed_review_case" in self.tags or
+                    (isinstance(structured, dict) and structured.get("kind") == "historical_review_case")):
+                raise ValueError("구조화된 검토 사례의 review_case_evidence가 없습니다")
         return self
 
 
@@ -214,6 +251,10 @@ def verify_corpus_evidence(record, base, verified):
 
 def verify_reference_evidence(record, base, verified, extracted=None):
     """Route overlays through unchanged original corpus and answer checks."""
+    if record.review_case_evidence:
+        from ...reference_cases import verify_review_case_evidence
+        verify_review_case_evidence(record, base, verified)
+        return
     if record.classification_evidence:
         from ...reference_curation import verify_classification_evidence
         verify_classification_evidence(record, base, verified, extracted)
@@ -341,6 +382,16 @@ class ReferenceIndex:
         duplicate = [key for key, count in Counter((r.track, r.grade, r.id) for r in records).items() if count > 1]
         if duplicate:
             errors.append({"line": None, "error": "같은 트랙·급수 안의 중복 ID", "identities": duplicate})
+        families = [r.review_case_evidence.family_id for r in records if r.review_case_evidence]
+        duplicate_families = [key for key, count in Counter(families).items() if count > 1]
+        if duplicate_families:
+            errors.append({"line": None, "error": "중복 검토 사례 family_id", "families": duplicate_families})
+        if not errors:
+            from ...reference_cases import verify_case_collection
+            try:
+                verify_case_collection(records)
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                errors.append({"line": None, "error": str(exc)[:300]})
         if errors:
             return {"schema_version": SCHEMA_VERSION, "indexed": 0, "errors": errors}
         rows = [(r.track, r.grade if r.grade is not None else NONE_GRADE, r.id, r.role,
@@ -387,6 +438,9 @@ class ReferenceIndex:
                 raise ValueError("참고 색인 행의 ID·분류 값과 저장 본문이 다릅니다. 색인을 다시 검토하세요.")
             _allowed_source(str(Path(record.provenance.file).resolve()))
             records.append(record)
+        case_families = [r.review_case_evidence.family_id for r in records if r.review_case_evidence]
+        if len(case_families) != len(set(case_families)):
+            raise ValueError("참고 색인에 중복 검토 사례 family_id가 있습니다")
         records = [r for r in records if r.id not in set(query.exclude_ids)]
         target = grams(query.text) if query.text else None
         records.sort(key=lambda r: (-(overlap(target, grams(r.text)) if target else 0), -(r.year or 0), r.id))

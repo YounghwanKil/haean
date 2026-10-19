@@ -21,6 +21,8 @@ haean tools track ref-search data/my-query.json --index data/track-references.sq
 
 기존 corpus에 등록한 완전한 PSAT 전사는 `track ref-export`로 선택한 ID만 정제 색인 입력으로 내보낼 수 있다. [원문 DB와 정제 참고자료 연결](REFERENCE_DATA.md)에 명시 선택 파일과 출처 검증 절차가 있다. 누락된 분류를 자동 추정하거나 통계·검토 행을 전문 사례로 바꾸지 않는다. 색인 수와 실제 요청의 검색 결과 수를 구분한다.
 
+문항 버전과 연결되는 과거 검토 의견은 [검토 사례 내보내기](REVIEW_CASES.md)로 별도 색인할 수 있다. 선택된 사례는 작성·수정·편집 입력에 포함되며 독립 풀이에는 전달하지 않는다. 의견의 출처와 부분 수정 상태를 보존하고 현행 정답의 근거로 자동 채택하지 않는다.
+
 새 트랙 명세 예시는 다음과 같다. 원문 자료가 아닌 합성 입력 예다.
 
 ```json

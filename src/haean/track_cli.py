@@ -39,6 +39,9 @@ def add_parser(subparsers):
     curate.add_argument("source_refs", type=Path)
     curate.add_argument("--classification", type=Path, required=True)
     curate.add_argument("--out", type=Path, required=True)
+    review = commands.add_parser("review-export", help="원문 행 범위가 연결된 과거 검토 사례를 새 참고자료로 내보내기")
+    review.add_argument("--selection", type=Path, required=True)
+    review.add_argument("--out", type=Path, required=True)
     attach = commands.add_parser("attach", help="기존 prepared run에 과목별 소재·설계 명세 연결")
     attach.add_argument("run", type=Path)
     attach.add_argument("brief", type=Path)
@@ -186,4 +189,7 @@ def dispatch(args):
     if operation == "ref-curate":
         from .reference_curation import curate
         return curate(args.source_refs, args.classification, args.out)
+    if operation == "review-export":
+        from .reference_cases import export
+        return export(args.selection, args.out)
     raise ValueError(f"알 수 없는 track 명령: {operation}")
