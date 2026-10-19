@@ -34,3 +34,11 @@ description: LEET 언어이해 지문·문항을 파일럿으로 작성하고 �
 ## 현재 회차 연결
 
 `haean track-exam runs/leet-reading/회차폴더`로 book.json 회차를 등록한다. 현재 문항 요청은 runs/current-exams.json의 언어이해 항목에서 경로를 찾고 book.json의 지문별 questions.number로 연결한다. 등록 해시가 달라지면 기존 검토·출력과의 연결을 다시 확인한다. verification.json 및 reviews/가 내용 해시와 일치하는지 확인하며 등록만으로 검토 완료라고 하지 않는다.
+
+## 팀의 사람 검토 연결
+
+`scripts/haean-tool review-packet 회차/book.json --out 새패킷`으로 공통지문을 포함한 학생용 문제와 검토자용 해설·응답 양식을 분리한다. `review-collect 새패킷 실제응답.json`은 원문 book의 해시·지문 ID·문항 위치·출력 번호를 대조해 의견을 보존한다. 상세 계약은 `docs/HUMAN_REVIEW.md`를 따른다.
+
+패킷 문항 ID는 book 버전에 한정된 식별자이며 원문 안정 ID로 취급하지 않는다. 공통지문 의견은 지문 범위를 적고, 지문 수정 뒤 연결된 모든 문항을 새로 검토한다. 입력 book이나 답·해설이 바뀌면 옛 패킷에 의견을 수집하지 않는다. 미기입 시간·의견과 실제 측정값, 모델과 사람의 작성 주체를 구분한다.
+
+수집은 수정·승인이 아니다. 언어이해를 기존 `feedback`·`human-checkpoint`·고정 평가기에 추리논증으로 넣지 않는다. 받은 의견을 문면과 대조하고 별도 수정본과 새 풀이·편집 원문을 남긴다. 구조화된 그림·표 등 book 어댑터가 지원하지 않는 표시 내용은 임의로 생략하지 않는다.

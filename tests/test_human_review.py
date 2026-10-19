@@ -280,7 +280,7 @@ def test_wrong_manifest_and_extra_public_files_are_rejected(tmp_path, source):
         collect_packet(packet, response)
 
 
-def test_psat_route_accepted_and_reading_explicitly_unsupported(tmp_path, draft, brief):
+def test_psat_route_accepted_and_incomplete_reading_book_rejected(tmp_path, draft, brief):
     for exam in ["psat5", "psat7"]:
         data = draft.model_dump()
         data["items"][0]["subject"] = "자료해석"
@@ -288,8 +288,30 @@ def test_psat_route_accepted_and_reading_explicitly_unsupported(tmp_path, draft,
         run = run_fixture(tmp_path / exam, data, route)
         create_packet(run, tmp_path / f"{exam}-packet")
     write(tmp_path / "book.json", {"exam": "leet", "subject": "언어이해"})
-    with pytest.raises(ValueError, match="언어이해 book"):
+    with pytest.raises(ValueError):
         create_packet(tmp_path / "book.json", tmp_path / "unsupported")
+    assert not (tmp_path / "unsupported").exists()
+
+
+def test_mixed_source_directory_requires_explicit_artifact(tmp_path, source):
+    write(source / "book.json", {})
+    with pytest.raises(ValueError, match="여러 원고 형식"):
+        create_packet(source, tmp_path / "ambiguous")
+    assert not (tmp_path / "ambiguous").exists()
+    assert create_packet(source / "candidate.json", tmp_path / "explicit")["items"] == 1
+
+
+def test_legacy_packet_cannot_claim_reading_format(tmp_path, source):
+    packet = tmp_path / "packet"
+    create_packet(source, packet)
+    response = response_file(packet, tmp_path)
+    manifest = read(packet / "manifest.json")
+    manifest["source_format"] = "leet_reading_book"
+    write(packet / "manifest.json", manifest)
+    (packet / "manifest.sha256").write_text(hashlib.sha256((packet / "manifest.json").read_bytes()).hexdigest() + "\n")
+    with pytest.raises(ValueError, match="결속 불일치"):
+        collect_packet(packet, response)
+    assert not (packet / "collections").exists()
 
 
 def test_real_render_assets_are_portable_and_internal_receipts_excluded(tmp_path, source):

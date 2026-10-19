@@ -137,16 +137,21 @@ def _resolve_run(value, base: Path) -> Path:
 def _source_data(source: Path):
     source = source.expanduser().resolve()
     if source.is_dir():
+        if (source / "book.json").exists() and any((source / name).exists() for name in ("candidate.json", "assembled.json")):
+            raise ValueError("여러 원고 형식이 있습니다. book.json 또는 candidate.json·assembled.json 파일을 직접 지정하세요")
         if (source / "assembled.json").is_file():
             source = source / "assembled.json"
         elif (source / "candidate.json").is_file():
             source = source / "candidate.json"
         elif (source / "book.json").exists():
-            raise ValueError("언어이해 book은 팀 검토 패킷에서 아직 지원하지 않습니다")
+            source = source / "book.json"
         else:
-            raise ValueError("candidate.json 또는 assembled.json이 있는 경로가 필요합니다")
+            raise ValueError("candidate.json·assembled.json·book.json이 있는 경로가 필요합니다")
+    if source.name == "book.json":
+        from .reading_human_review import source_data
+        return source_data(source)
     if source.name not in {"candidate.json", "assembled.json"}:
-        raise ValueError("candidate.json·assembled.json만 지원합니다. 언어이해 book은 미지원입니다")
+        raise ValueError("candidate.json·assembled.json 또는 언어이해 book.json을 지정하세요")
 
     references = {}
     cache = {}
@@ -165,7 +170,7 @@ def _source_data(source: Path):
         remember(brief_path)
         brief_data = _read_json(brief_path)
         if brief_data.get("subject") == "언어이해":
-            raise ValueError("언어이해 book은 팀 검토 패킷에서 아직 지원하지 않습니다")
+            raise ValueError("언어이해는 candidate 형식이 아닌 book.json을 지정하세요")
         brief = _BriefScope.model_validate({key: brief_data.get(key) for key in ("exam", "subject", "count")})
         draft = Draft.model_validate(_read_json(candidate))
         if len({item.id for item in draft.items}) != len(draft.items):
@@ -370,9 +375,21 @@ def create_packet(source: Path, out: Path) -> dict:
     binding, items = _source_data(Path(source))
     with tempfile.TemporaryDirectory(prefix="haean-review-packet-") as folder:
         stage = Path(folder)
-        _render(stage, binding["items"], items)
+        reading = binding.get("source_format") == "leet_reading_book"
+        if reading:
+            from .reading_human_review import render
+            render(stage, binding, items)
+        else:
+            _render(stage, binding["items"], items)
         _write_json(stage / "review" / "response.schema.json", ReviewResponse.model_json_schema())
-        (stage / "README.md").write_text(_INSTRUCTIONS, encoding="utf-8")
+        instructions = _INSTRUCTIONS
+        if reading:
+            instructions = instructions.replace(
+                "수집은 부모 run 및 후보 해시에 검토 원문을 연결합니다. 부모 상태·checkpoint·feedback은 자동 변경하지 않습니다.",
+                "수집은 book 해시·공통지문·문항 위치에 검토 원문을 연결합니다. item_id는 이 book 버전의 검토용 식별자이며 원본의 안정 ID가 아닙니다.\n"
+                "공통지문 의견은 location에 지문 범위를 적습니다. 지문을 수정하면 연결된 모든 문항을 재검토합니다. 원본·checkpoint·feedback은 자동 변경하지 않습니다.")
+            instructions = instructions.replace("HTML과 구조화된 그림을 출력했으며", "텍스트형 언어이해 HTML을 출력했으며")
+        (stage / "README.md").write_text(instructions, encoding="utf-8")
         files = [{"path": str(path.relative_to(stage)), "sha256": _sha(path.read_bytes())}
                  for path in sorted(stage.rglob("*")) if path.is_file()]
         manifest = {"version": 1, "kind": "team_review_packet", **binding, "files": files,
@@ -394,7 +411,7 @@ def create_packet(source: Path, out: Path) -> dict:
             "manifest_sha256": manifest_sha, "student": str(out / "student" / "questions.html"),
             "solutions": str(out / "review" / "solutions.html"),
             "response": str(out / "review" / "response.json"),
-            "schema": str(out / "review" / "response.schema.json"), "items": len(items)}
+            "schema": str(out / "review" / "response.schema.json"), "items": len(binding["items"])}
 
 
 def _packet_manifest(packet: Path):
@@ -407,7 +424,8 @@ def _packet_manifest(packet: Path):
         raise ValueError("지원하지 않는 검토 패킷")
     _check_sources(manifest["source_files"])
     binding, _ = _source_data(Path(manifest["source"]))
-    if any(manifest.get(key) != value for key, value in binding.items()):
+    if (manifest.get("source_format") != binding.get("source_format")
+            or any(manifest.get(key) != value for key, value in binding.items())):
         raise ValueError("패킷의 번호·ID·parent 내용 결속 불일치")
     expected_student = set()
     seen = set()
@@ -428,13 +446,21 @@ def _packet_manifest(packet: Path):
 
 
 def _digest(response: ReviewResponse, receipt: dict) -> str:
+    reading = receipt.get("source_format") == "leet_reading_book"
     lines = ["# 수집한 팀 검토", "", f"검토자: {response.reviewer}", f"출처: {response.origin}",
              f"완료 표기: {receipt['completed_items']} / 제출 {len(response.items)}문항", "",
              "미기입은 미기입으로 보존합니다. 아래 기록은 승인·전문가 확인·실측 난도 인증이 아닙니다.",
-             "부모 후보에 연결한 의견을 실제 문항에 적용하고 재검토하는 작업이 남아 있습니다.", ""]
+             ("book 버전에 연결한 의견을 실제 문항에 적용하고, 지문 변경 시 연결된 모든 문항을 재검토해야 합니다." if reading else
+              "부모 후보에 연결한 의견을 실제 문항에 적용하고 재검토하는 작업이 남아 있습니다."), ""]
     for item, link in zip(response.items, receipt["items"]):
-        lines.extend([f"## {item.number}번 · {item.item_id}", "",
-                      f"parent_run: {link['parent_run']}", f"parent_candidate_sha256: {link['parent_candidate_sha256']}",
+        lines.extend([f"## {item.number}번 · {item.item_id}", ""])
+        if reading:
+            lines.extend([f"book_path: {link['book_path']}", f"book_sha256: {link['book_sha256']}",
+                          f"passage_id: {link['passage_id']}", f"question_locator: {link['question_locator']}",
+                          "identity_scope: book_version (이 버전의 검토용 식별자)"])
+        else:
+            lines.extend([f"parent_run: {link['parent_run']}", f"parent_candidate_sha256: {link['parent_candidate_sha256']}"])
+        lines.extend([
                       f"완료: {item.completed}; 사전 정답 열람: {item.prior_answer_seen}; 선택 답: {item.answer}",
                       f"풀이 초: {item.solve_seconds}; 수정 초: {item.edit_seconds}", ""])
         if item.option_reasoning is not None:
@@ -494,6 +520,9 @@ def collect_packet(packet: Path, response: Path, out: Path | None = None) -> dic
                "items": linked, "human_approved": False, "expert_verified": False,
                "difficulty_validated": False, "feedback_application_required": True,
                "next": "parent run·후보 해시에 연결된 의견입니다. feedback 적용과 수정·재검토가 별도로 필요합니다. 부모 상태는 바꾸지 않았습니다."}
+    if manifest.get("source_format") == "leet_reading_book":
+        receipt["source_format"] = "leet_reading_book"
+        receipt["next"] = "book 해시·지문·문항 위치에 연결된 의견입니다. 원본은 바꾸지 않았으며 수정·독립 재검토가 필요합니다. 기존 candidate용 feedback/human-checkpoint에 언어이해를 넣지 않습니다."
     digest = _digest(submission, receipt).encode("utf-8")
     receipt["digest_sha256"] = _sha(digest)
     if destination.exists():

@@ -110,6 +110,8 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 
 사람에게 회차를 보내려면 [사람 검토 패킷](docs/HUMAN_REVIEW.md)의 `haean tools review-packet 회차경로 --out 새패킷경로`를 사용합니다. 문제와 해설을 분리하고 번호·ID·버전이 연결된 응답 양식을 만듭니다. `review-collect`로 실제 풀이시간·선지 판단·오류 의견을 회수한 뒤, 확인한 문제를 원 묶음에 적용합니다. 수집만으로 검토 완료나 납품 승인을 기록하지 않습니다.
 
+언어이해는 `review-packet 회차/book.json --out 새패킷경로`를 사용합니다. 공통지문을 함께 내보내고 전체 book 해시·지문·문항 위치에 의견을 연결합니다. 패킷 식별자는 해당 버전에 한정되며, 지문을 수정하면 연결된 모든 문항을 재검토합니다. 언어이해 고정 평가·사람 승인까지 지원한다는 뜻은 아닙니다.
+
 ```bash
 # 문항별 의견: 이 버전에 대한 지적이라는 연결을 유지
 ./haean tools feedback RUN --item ITEM-001 --reviewer 팀검토자 --severity B --candidate-sha '검토 당시 해시' --file 검토의견.txt

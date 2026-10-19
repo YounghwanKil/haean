@@ -87,7 +87,7 @@ def main():
     p = sub.add_parser("export")
     p.add_argument("run", type=Path)
     p = sub.add_parser("review-packet", help="사람 검토용 문제·해설·응답 양식을 버전에 고정해 분리")
-    p.add_argument("source", type=Path, help="candidate가 있는 run 또는 assembled.json 회차")
+    p.add_argument("source", type=Path, help="candidate run, assembled.json 회차 또는 언어이해 book.json")
     p.add_argument("--out", type=Path, required=True)
     p = sub.add_parser("review-collect", help="버전·문항 번호를 대조해 검토 응답 원문 수집; 자동 승인 아님")
     p.add_argument("packet", type=Path)
