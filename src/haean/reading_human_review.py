@@ -86,12 +86,18 @@ def _metadata(value, string_fields, location):
             raise ValueError(f"언어이해 book의 {location}/sources는 문자열 또는 객체의 목록이어야 합니다")
 
 
-def source_data(book_path: Path):
+def source_data(book_path: Path, *, expected_numbers=None):
     """Read and validate one immutable book snapshot, retaining source locators."""
     source = Path(book_path).expanduser().resolve()
     raw = source.read_bytes()
     book_sha = _sha(raw)
     book = json.loads(raw, parse_constant=_reject_constant, object_pairs_hook=_unique_keys)
+    return validate_book_data(book, source=source, book_sha=book_sha, expected_numbers=expected_numbers)
+
+
+def validate_book_data(book, *, source: Path, book_sha: str, expected_numbers=None,
+                       require_passage_ids=True):
+    """Validate book content without I/O; defaults retain complete-book rules."""
     _object(book, _BOOK_FIELDS, "root")
     _metadata(book, ("title",), "root")
     if "minutes" in book and (type(book["minutes"]) is not int or book["minutes"] < 1):
@@ -107,10 +113,12 @@ def source_data(book_path: Path):
     for passage_index, passage in enumerate(passages):
         passage_locator = f"/passages/{passage_index}"
         _object(passage, _PASSAGE_FIELDS, passage_locator)
-        passage_id = _text(passage.get("id"), f"{passage_locator}/id")
-        if passage_id.strip() in passage_ids:
-            raise ValueError("언어이해 book의 지문 ID 중복")
-        passage_ids.add(passage_id.strip())
+        passage_id = passage.get("id")
+        if require_passage_ids or "id" in passage:
+            _text(passage_id, f"{passage_locator}/id")
+            if passage_id.strip() in passage_ids:
+                raise ValueError("언어이해 book의 지문 ID 중복")
+            passage_ids.add(passage_id.strip())
         _metadata(passage, ("title", "domain", "source_domain"), passage_locator)
         paragraphs = _texts(passage.get("paragraphs"), f"{passage_locator}/paragraphs")
         questions = passage.get("questions")
@@ -157,7 +165,8 @@ def source_data(book_path: Path):
                 mapping["source_question_id"] = question_id
             paired.append((mapping, {"passage_index": passage_index, "paragraphs": paragraphs,
                                      "question": question}))
-    if [mapping["number"] for mapping, _ in paired] != list(range(1, len(paired) + 1)):
+    expected = list(range(1, len(paired) + 1)) if expected_numbers is None else list(expected_numbers)
+    if [mapping["number"] for mapping, _ in paired] != expected:
         raise ValueError("언어이해 book의 문항 번호는 지문·문항 순서대로 1부터 전체 문항 수까지 이어져야 합니다")
     binding = {"source": str(source), "source_format": SOURCE_FORMAT, "exam": "leet", "subject": "언어이해",
                "source_files": [{"path": str(source), "sha256": book_sha}],

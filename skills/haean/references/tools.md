@@ -1,5 +1,7 @@
 # 로컬 도구 사용법
 
+언어이해는 [별도 지문별 제작](../../../docs/READING_PRODUCTION.md)의 `reading` 명령군을 쓴다. 아래 일반 `prepare/check/blind/export`와 입력·검토 스키마가 다르다.
+
 `scripts/haean-tool`은 저장소 가상환경을 사용하고 저장소 루트에서 실행한다. 이 Python 도구는 데이터·검증을 담당한다. 문항을 쓰는 주체는 Codex다.
 
 ```bash

@@ -4,29 +4,36 @@ import hashlib
 import json
 from pathlib import Path
 from .hwp import execute, java_tool
+from .human_review import _reject_constant, _unique_keys
 from .pipeline import save
+from .reading_human_review import _text, validate_book_data
 
 
-def validate_book(book):
-    passages=book.get('passages',[])
-    if len(passages)!=10: raise ValueError('언어이해는10지문×3문항이 필요합니다')
-    numbers=[]
-    for passage in passages:
-        if not passage.get('paragraphs') or any(not x.strip() for x in passage['paragraphs']): raise ValueError('빈 지문')
-        if len(passage['questions'])!=3: raise ValueError('지문당3문항이 필요합니다')
-        for q in passage['questions']:
-            numbers.append(q['number'])
-            if len(q['options'])!=5 or len(set(q['options']))!=5: raise ValueError('5개 독립 선지 필요')
-            if not 1<=q['answer']<=5 or len(q['option_explanations'])!=5: raise ValueError('정답·선지 해설 오류')
-            if not q['stem'].strip() or not q['explanation'].strip(): raise ValueError('발문·해설 누락')
-    if numbers!=list(range(1,31)): raise ValueError('문항번호1–30 순서 필요')
+def validate_book(book, *, kind='questions'):
+    if kind not in {'questions', 'solutions'}:
+        raise ValueError('출력 종류 오류')
+    passages = book.get('passages') if isinstance(book, dict) else None
+    if not isinstance(passages, list) or len(passages) != 10:
+        raise ValueError('언어이해는10지문×3문항이 필요합니다')
+    # Reuse the text-only book contract without inventing authoring IDs for
+    # older layout inputs. Validation bindings are not persisted or exported.
+    validate_book_data(book, source=Path('<layout-validation>'), book_sha='',
+                       require_passage_ids=False)
+    if kind == 'solutions':
+        for passage_index, passage in enumerate(passages):
+            locator = f'/passages/{passage_index}'
+            for field in ('title', 'domain'):
+                _text(passage.get(field), f'{locator}/{field}')
+            for question_index, question in enumerate(passage['questions']):
+                for field in ('difficulty', 'cognitive_task'):
+                    _text(question.get(field), f'{locator}/questions/{question_index}/{field}')
     return passages
 
 
 def fill_reading(book_path,template,output,kind='questions',total_pages=None,page_starts=()):
     book_path,template,output=map(Path,(book_path,template,output))
-    book=json.loads(book_path.read_text());passages=validate_book(book)
-    if kind not in {'questions','solutions'}: raise ValueError('출력 종류 오류')
+    book=json.loads(book_path.read_bytes(), parse_constant=_reject_constant, object_pairs_hook=_unique_keys)
+    passages=validate_book(book, kind=kind)
     if output.exists() or output.resolve()==template.resolve(): raise ValueError('기존 출력/원본 덮어쓰기 금지')
     if total_pages is not None and (kind!='questions' or not 1<=total_pages<=999):raise ValueError('문제지 쪽수1–999')
     if page_starts and (kind!='questions' or any(n not in range(2,31) for n in page_starts)): raise ValueError('새 쪽 시작은 문제지2–30번만 지정')

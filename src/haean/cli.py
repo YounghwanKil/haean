@@ -22,6 +22,8 @@ def main():
     add_parser(sub)
     from .composition_cli import add_parser as add_composition_parser
     add_composition_parser(sub)
+    from .reading_cli import add_parser as add_reading_parser
+    add_reading_parser(sub)
     p = sub.add_parser("import", help="원본을 읽기 전용으로 색인")
     p.add_argument("paths", nargs="+", type=Path)
     p.add_argument("--refresh", action="store_true")
@@ -225,6 +227,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == "reading":
+        from .reading_cli import dispatch as reading_dispatch
+        return reading_dispatch(a)
     if a.command == "distractor-check":
         from .distractor_checks import check_distractors
         return check_distractors(a.candidate, a.sidecar)

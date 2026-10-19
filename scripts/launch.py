@@ -125,6 +125,7 @@ def help_text():
   haean status           로컬 문항 작업 현황
   haean tools --help     자료·회차 구성·검토 명령 목록
   haean tools compose --help       선택 회차 설계
+  haean tools reading --help       언어이해 지문별 작성·검토·조립
   haean tools review-packet --help 사람 검토용 묶음 준비
   haean track-exam RUN   status에 표시할 현재 회차 지정
   haean setup-figures     도식·그래프 검토 도구 설치

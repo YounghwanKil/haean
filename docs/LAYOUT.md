@@ -101,6 +101,8 @@ PSAT 자료해석 25번 및 공통지문 35–36번은 이 경로로 실제 한�
 
 언어이해는 `Brief`를 추리논증으로 바꾸지 않고 별도 `haean.reading_layout` 모듈을 쓴다. 입력은 `passages` 10개, 각 지문의 `paragraphs`와 `questions` 3개이며 문항 번호는 1–30 순서다. 문항에는 `stem`, `box`(선택), `options` 5개, `answer`(1–5), `explanation`, `option_explanations` 5개, `difficulty`, `cognitive_task`가 필요하다. 지문에는 제작용 `title`과 `domain`을 둔다. 학생용 문제지에 제작 제목·분류·정답을 넣지 않는다.
 
+새 book은 [지문별 제작](READING_PRODUCTION.md)의 `reading assemble`로 연결할 수 있다. 양식 삽입 전 텍스트형 book 계약을 검사하며 미지원 표시 필드를 조용히 생략하지 않는다. 해설 출력은 `title/domain/difficulty/cognitive_task` 누락을 Java 실행 전에 알린다. 이전의 문제지 전용 입력은 이 해설 분류나 작성 ID가 없어도 사용할 수 있다.
+
 ```sh
 .venv/bin/python -m haean.reading_layout BOOK.json --template QUESTIONS.hwp --out runs/reading/questions.hwp
 .venv/bin/python -m haean.reading_layout BOOK.json --template SOLUTIONS.hwp --out runs/reading/solutions.hwp --kind solutions

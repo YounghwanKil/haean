@@ -2,6 +2,7 @@
 - [설치](Installation)
 - [사용법](Usage)
 - [제작 흐름](Workflow)
+- [언어이해 제작](Reading)
 - [데이터 관리](Knowledge)
 - [한글 출력](Layout)
 - [평가·개선](Evaluation)

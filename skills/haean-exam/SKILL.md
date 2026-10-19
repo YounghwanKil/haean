@@ -5,6 +5,8 @@ description: 해안 LEET·PSAT 모의고사 한 회의 유형 배정, 문항 배
 
 # 회차 구성
 
+언어이해 회차는 [지문별 제작](../../docs/READING_PRODUCTION.md)의 별도 `reading` 계획을 사용한다. 10지문×3문항 전체와 짧은 파일럿을 구분하고, 한 지문의 세 문항을 같은 작성·검토 묶음으로 유지한다. 아래 `plan/exam-build/compose` 계약에 넣지 않는다.
+
 `scripts/haean-tool plan --exam EXAM --subject SUBJECT`로 원자료 기반 정수 배정을 얻는다. 기본값은 최신 자료의 최근 3개년이며 사용자가 다른 기간을 지정하면 따른다. PSAT 7급 추가채용을 제외하려면 `--exclude-extra`를 사용한다.
 
 다음 내용을 `runs/회차명/assembly.json`에 기록한다: 시험·급수·과목, 자료 구간, 번호별 유형·소재·난도·문항 경로·검토 상태, 공유 지문 세트 ID, 부족한 슬롯. 이 파일은 총괄 또는 assembler 한 명만 수정한다. 여러 출제자는 각자 배정받은 run에만 작성한다.
