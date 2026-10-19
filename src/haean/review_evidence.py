@@ -17,6 +17,7 @@ from .validation import public_item
 
 SCHEMAS = {"blind": BlindReview, "editor": EditorialReview}
 REQUEST_FILE = "review-request.json"
+EDITOR_REQUEST_FILE = "editor-review-request.json"
 
 
 def json_sha256(value):
@@ -27,6 +28,43 @@ def json_sha256(value):
 
 def file_sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def preserve_review_files(run, names):
+    """Keep prior manual packets/results before replacing their current pointers."""
+    run = Path(run)
+    previous = {name: (run / name).read_bytes() for name in names if (run / name).is_file()}
+    if previous:
+        history = run / "review-history" / uuid4().hex
+        history.mkdir(parents=True, exist_ok=False)
+        for name, data in previous.items():
+            (history / name).write_bytes(data)
+
+
+def _template(binding):
+    return {"result": None, "evidence": {"input_binding": binding,
+            "producer": {"execution_mode": "external-attestation", "reviewer": "",
+                         "requested_model": None, "actual_model": None}}}
+
+
+def invalidate_editor_review(run):
+    from .pipeline import save
+    run = Path(run)
+    status_path = run / "status.json"
+    status = json.loads(status_path.read_text()) if status_path.exists() else {}
+    preserve_review_files(run, [EDITOR_REQUEST_FILE, "editorial-review-template.json",
+                               "editorial-review.schema.json", "editorial-result.json", "manual-review.json", "status.json"])
+    # Invalidate prior approval before changing any active editor packet. A
+    # failure halfway through preparation must still leave review pending.
+    status.pop("editor_preparation_id", None)
+    save(status_path, {**status, "state": "awaiting_independent_review", "pending_review": "editor",
+                       "human_approved": False})
+    pending = {"state": "editor_prepare_required",
+               "next_command": "editor-prepare RUN --blind PATH",
+               "note": "독립 풀이를 먼저 고정한 뒤 새 편집 검토 템플릿을 받으세요."}
+    save(run / EDITOR_REQUEST_FILE, pending)
+    save(run / "editorial-review-template.json", pending)
+    save(run / "editorial-review.schema.json", {"not": {}, "description": pending["note"]})
 
 
 def review_inputs(run):
@@ -100,21 +138,17 @@ def prepare_review_request(run):
     from .pipeline import save
     run = Path(run)
     bindings = _bindings(run, uuid4().hex)
+    preserve_review_files(run, [REQUEST_FILE, "blind-review-template.json", "blind-review.schema.json",
+                               "blind-result.json", "blind-usage.json"])
+    invalidate_editor_review(run)
     save(run / REQUEST_FILE, {"candidate_sha256": file_sha256(run / "candidate.json"),
                               "bindings": bindings})
-    for role, binding in bindings.items():
-        filename = "editorial" if role == "editor" else role
-        save(run / f"{filename}-review-template.json", {
-            "result": None,
-            "evidence": {"input_binding": binding,
-                         "producer": {"execution_mode": "external-attestation", "reviewer": "",
-                                      "requested_model": None, "actual_model": None}},
-        })
-        save(run / f"{filename}-review.schema.json", envelope_schema(role, binding))
+    save(run / "blind-review-template.json", _template(bindings["blind"]))
+    save(run / "blind-review.schema.json", envelope_schema("blind", bindings["blind"]))
     return bindings
 
 
-def current_binding(run, role):
+def _current_base_binding(run, role):
     if role not in SCHEMAS:
         raise ValueError("지원되지 않는 검토 역할")
     run = Path(run)
@@ -130,6 +164,103 @@ def current_binding(run, role):
     if json_sha256(stored) != json_sha256(actual):
         raise ValueError("review_binding_changed: 검토 입력·지침·명세·스키마가 바뀌었습니다. 새 check와 검토가 필요합니다")
     return actual
+
+
+def current_binding(run, role):
+    base = _current_base_binding(run, role)
+    if role == "blind":
+        return base
+    run = Path(run)
+    request = json.loads((run / EDITOR_REQUEST_FILE).read_text()) if (run / EDITOR_REQUEST_FILE).exists() else {}
+    if request.get("state") != "prepared":
+        raise ValueError("editor_review_not_prepared: editor-prepare로 독립 풀이를 먼저 고정하세요")
+    manifest_path = Path(request["manifest"]["path"]).resolve()
+    root = (run / "editor-preparations").resolve()
+    if root not in manifest_path.parents:
+        raise ValueError("editor_review_binding_changed: 편집 검토 준비 기록이 바뀌었습니다")
+    manifest_bytes = manifest_path.read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != request["manifest"]["sha256"]:
+        raise ValueError("editor_review_binding_changed: 편집 검토 준비 기록이 바뀌었습니다")
+    manifest = json.loads(manifest_bytes)
+    if manifest["base_binding"] != base:
+        raise ValueError("review_input_binding_mismatch: 새 check에는 새 편집 검토 준비가 필요합니다")
+    record = manifest["blind_review"]
+    snapshot = manifest_path.parent / "blind-result.json"
+    if (record["snapshot_path"] != str(snapshot) or file_sha256(snapshot) != record["file_sha256"]):
+        raise ValueError("editor_blind_snapshot_changed: 편집자가 읽을 독립 풀이 사본이 바뀌었습니다")
+    if file_sha256(manifest["blind_source_path"]) != record["file_sha256"]:
+        raise ValueError("editor_blind_source_changed: 독립 풀이 원본이 바뀌었습니다. 새 editor-prepare와 편집 검토가 필요합니다")
+    _, receipt = load_bound_review(snapshot, run, "blind")
+    if (receipt["result_file_sha256"] != record["file_sha256"]
+            or receipt["result_sha256"] != record["result_sha256"]
+            or json_sha256(receipt["input_binding"]) != record["input_binding_sha256"]):
+        raise ValueError("editor_blind_snapshot_changed: 고정한 독립 풀이의 검토 연결이 다릅니다")
+    return {**base, "version": 2, "editor_preparation_id": manifest["preparation_id"], "blind_review": record}
+
+
+def prepare_editor_review(run, blind_path):
+    """Freeze a validated blind result before, never after, editorial review."""
+    from .pipeline import save
+    run, blind_path = Path(run).resolve(), Path(blind_path).resolve()
+    outputs = [EDITOR_REQUEST_FILE, "status.json", "editorial-review-template.json", "editorial-review.schema.json"]
+    if blind_path in {(run / name).resolve() for name in outputs}:
+        raise ValueError("editor_blind_path_conflict: 독립 풀이 원본을 편집 준비의 출력 경로와 분리하세요")
+    base = _current_base_binding(run, "editor")
+    raw = blind_path.read_bytes()
+    blind, receipt = load_bound_review(blind_path, run, "blind")
+    digest = hashlib.sha256(raw).hexdigest()
+    if receipt["result_file_sha256"] != digest:
+        raise ValueError("review_result_changed: 준비 중 독립 풀이가 바뀌었습니다")
+    _, draft, _ = review_inputs(run)
+    expected = {item.id for item in draft.items}
+    if len(blind.solutions) != len(expected) or {item.item_id for item in blind.solutions} != expected:
+        raise ValueError("review_item_ids_mismatch: 독립 풀이 문항 누락·중복")
+    if any(issue.item_id not in expected for issue in blind.issues):
+        raise ValueError("review_item_ids_mismatch: 알 수 없는 문항의 독립 풀이 지적")
+    preparation_id = uuid4().hex
+    folder = run / "editor-preparations" / preparation_id
+    folder.mkdir(parents=True, exist_ok=False)
+    snapshot = folder / "blind-result.json"
+    snapshot.write_bytes(raw)
+    record = {"snapshot_path": str(snapshot), "file_sha256": digest,
+              "result_sha256": receipt["result_sha256"],
+              "input_binding_sha256": json_sha256(receipt["input_binding"])}
+    manifest = {"preparation_id": preparation_id, "base_binding": base,
+                "blind_source_path": str(blind_path), "blind_review": record, "blind_evidence": receipt}
+    manifest_path = folder / "manifest.json"
+    save(manifest_path, manifest)
+    if (_current_base_binding(run, "editor") != base or file_sha256(blind_path) != digest
+            or file_sha256(snapshot) != digest):
+        raise ValueError("review_binding_changed: 편집 검토 준비 중 입력이 바뀌었습니다")
+    invalidate_editor_review(run)
+    save(run / EDITOR_REQUEST_FILE, {"state": "prepared",
+         "manifest": {"path": str(manifest_path), "sha256": file_sha256(manifest_path)}})
+    binding = current_binding(run, "editor")
+    template = _template(binding)
+    schema = envelope_schema("editor", binding)
+    for destination in (folder, run):
+        save(destination / "editorial-review-template.json", template)
+        save(destination / "editorial-review.schema.json", schema)
+    status_path = run / "status.json"
+    status = json.loads(status_path.read_text())
+    save(status_path, {**status, "state": "awaiting_independent_review", "pending_review": "editor",
+                       "human_approved": False, "editor_preparation_id": preparation_id})
+    return {"state": "awaiting_independent_review", "pending_review": "editor",
+            "blind_snapshot": str(snapshot), "template": str(run / "editorial-review-template.json"),
+            "schema": str(run / "editorial-review.schema.json"), "editor_preparation_id": preparation_id}
+
+
+def verify_editor_blind_pair(run, blind_path, blind_evidence, editorial_path, editorial_evidence):
+    binding = current_binding(run, "editor")
+    record = binding["blind_review"]
+    if (json_sha256(editorial_evidence["input_binding"]) != json_sha256(binding)
+            or blind_evidence["result_file_sha256"] != record["file_sha256"]
+            or blind_evidence["result_sha256"] != record["result_sha256"]
+            or json_sha256(blind_evidence["input_binding"]) != record["input_binding_sha256"]):
+        raise ValueError("editor_blind_binding_mismatch: 편집자가 대조한 독립 풀이와 제출된 풀이가 다릅니다")
+    if (file_sha256(blind_path) != blind_evidence["result_file_sha256"]
+            or file_sha256(editorial_path) != editorial_evidence["result_file_sha256"]):
+        raise ValueError("review_result_changed: 제출 확인 중 검토 결과가 바뀌었습니다")
 
 
 def _producer(value):
@@ -220,7 +351,8 @@ def codex_blind_envelope(run, binding, result, model, prior_inputs):
 
 def load_bound_review(path, run, role):
     """Validate bindings before the caller changes status or stores a gate result."""
-    data = json.loads(Path(path).read_text())
+    raw = Path(path).read_bytes()
+    data = json.loads(raw)
     if not isinstance(data, dict) or set(data) != {"result", "evidence"}:
         raise ValueError("legacy_missing_review_evidence: raw 검토 결과는 채택하지 않습니다. 검토 당시 binding을 담은 envelope가 필요합니다")
     evidence = data["evidence"]
@@ -235,8 +367,11 @@ def load_bound_review(path, run, role):
         if "result_sha256" not in evidence:
             raise ValueError("review_result_hash_missing: CLI 실행기의 결과 해시가 필요합니다")
         _verify_codex_trace(run, evidence)
+    file_digest = hashlib.sha256(raw).hexdigest()
+    if file_sha256(path) != file_digest:
+        raise ValueError("review_result_changed: 검토 결과를 읽는 동안 파일이 바뀌었습니다")
     receipt = {**evidence, "result_sha256": result_sha,
-               "result_file_sha256": file_sha256(path),
+               "result_file_sha256": file_digest,
                "assurance": ("runner-linked-cli-trace" if mode == "codex-cli" else
                              "external-attestation; not cryptographic proof of reviewer execution")}
     return result, receipt

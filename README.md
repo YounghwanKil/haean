@@ -77,13 +77,14 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 ./haean tools prepare --exam leet --subject 추리논증 --type '논증 평가 및 문제 해결' --topic '공공 전자기록'
 ./haean tools check RUN RUN/draft.json
 ./haean tools blind RUN
+# CLI blind는 편집 입력도 준비한다. 준비된 양식으로 편집 검토를 위임한 뒤:
 ./haean tools review-result RUN RUN/blind-result.json RUN/editorial-result.json --candidate-sha '검토 당시 해시'
 ./haean tools export RUN
 ```
 
 `prepare`는 자료와 스키마를 만들며 문항을 만든 척하지 않습니다. Codex 출제자가 실제 JSON을 씁니다. `blind`는 현재 ChatGPT 로그인으로 **새 Codex 세션**을 실행해 정답을 제외한 문항만 풉니다. 정답·조건 불일치나 A/B 오류가 있으면 수정 뒤 다시 검토합니다. 통과 상태도 사람의 최종 검토 대기입니다.
 
-직접 위임하는 검토자는 `check`가 만든 `*-review-template.json`과 `*-review.schema.json`을 사용합니다. 결과의 `input_binding`은 읽은 문항·지침·요청을 가리킵니다. `review-result`는 이 연결을 검사하므로 예전 raw 검토 JSON은 그대로 재사용할 수 없습니다. 새 문항에 예전 결과를 붙이지 말고 [검토 스킬](skills/haean-review/SKILL.md)에 따라 다시 검토하세요.
+직접 위임하는 풀이자는 `check`가 만든 `blind-review-template.json`과 결과 스키마를 사용합니다. 외부 풀이 결과를 받으면 `./haean tools editor-prepare RUN --blind RUN/blind-result.json`으로 그 결과를 고정한 뒤 편집자에게 새 양식을 전달합니다. CLI `blind`는 이 준비를 자동으로 수행합니다. `review-result`는 문항·지침·요청뿐 아니라 편집자가 대조한 풀이도 확인하므로, 풀이가 바뀌면 편집 검토도 갱신해야 합니다. 자세한 순서는 [검토 스킬](skills/haean-review/SKILL.md)에 있습니다.
 
 도식·그래프 문항은 `haean setup-figures`로 그림 패키지를 준비하세요. 논증 도식에는 Graphviz, 한국어 그래프에는 NanumGothic·Noto Sans CJK KR·AppleGothic 등 한국어 폰트가 필요합니다. `doctor`가 Python 그림 패키지와 Graphviz 상태를 안내합니다. 폰트는 실제 그림을 만들 때 확인합니다.
 

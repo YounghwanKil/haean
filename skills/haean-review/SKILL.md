@@ -7,10 +7,11 @@ description: 해안 LEET·PSAT 문항의 독립 풀이, 논리 오류, 해설 �
 
 1. `scripts/haean-tool check RUN DRAFT`를 실행해 현행 문항을 고정한다. 기계 검증은 문항의 의미상 정답을 증명하지 않는다.
 2. **독립 풀이에는 새 컨텍스트 서브에이전트 haean_blind_solver를 사용한다.** 입력은 `blind-input.json`, `blind-instructions.md`, `blind-review-template.json`, `blind-review.schema.json`이다. 템플릿의 입력 연결 정보(`input_binding`)를 그대로 돌려주고 `result`에 풀이를 쓴다. 출제 대화와 정답을 상속하지 않는다. 새 컨텍스트가 불가능하면 `scripts/haean-tool blind RUN`으로 별도 Codex 세션을 사용한다.
-3. **haean_editor에게 편집 검토를 위임한다.** 현행 candidate와 context, 독립 풀이 결과, `editorial-instructions.md`(`check`가 급수·과목별 지침을 생성한다), 관련 수정 사례와 `editorial-review-template.json`을 읽게 한다. 출력은 `editorial-review.schema.json`에 맞춘 `editorial-result.json`이다. `result`에 검토를, `evidence`에 검토 당시 입력 연결 정보와 실행 주체를 기록한다.
-4. 검토 당시 candidate 해시로 `review-result`를 실행한다. 이 명령은 결과에 연결된 문항·지침·명세·요청 ID도 대조한다. 예전 raw 결과에 최신 연결 정보를 붙여 재사용하지 않는다. A/B 오류는 수정 후 check와 독립 검토를 반복한다. 기본 수정은 2회까지이며 해결되지 않은 것은 이유와 함께 표시한다.
+3. 독립 풀이 결과가 나오면 `scripts/haean-tool editor-prepare RUN --blind RUN/blind-result.json`으로 편집 검토 입력을 고정한다. CLI `blind`는 성공 시 이 준비를 자동으로 수행한다. 외부 풀이 결과를 받았거나 다시 준비할 때는 명시적으로 실행한다. 새 준비는 이전 편집 결과를 무효화하므로 편집 결과 제출 직전에 다시 실행하지 않는다.
+4. **haean_editor에게 편집 검토를 위임한다.** 현행 candidate와 context, 준비 결과의 `blind_snapshot` 사본, `editorial-instructions.md`, 관련 수정 사례와 새 `editorial-review-template.json`을 읽게 한다. 준비 기록은 `editor-review-request.json`에서 다시 찾을 수 있다. 출력은 `editorial-review.schema.json`에 맞춘 `editorial-result.json`이다. `result`에 검토를, `evidence`에 준비 당시 입력 연결 정보와 실행 주체를 기록한다. `check` 직후의 미준비 상태에서는 편집 결과를 만들지 않는다.
+5. 검토 당시 candidate 해시로 `review-result`를 실행한다. 이 명령은 문항·지침·명세·요청 ID와 편집자가 대조한 독립 풀이의 연결을 검사한다. 예전 raw 결과에 최신 연결 정보를 붙여 재사용하지 않는다. A/B 오류는 수정 후 check와 독립 검토를 반복한다. 기본 수정은 2회까지이며 해결되지 않은 것은 이유와 함께 표시한다.
 
-같은 check 요청에서 블라인드 풀이만 다시 실행한 경우에도 편집자는 새 풀이와 대조해 결과를 갱신한다. 현재 수동 편집 결과의 연결 정보에는 대조한 블라인드 결과의 해시가 포함되지 않아 이 갱신을 자동으로 강제하지 못한다. 입력 연결 통과를 모든 검토 계보의 검증이라고 설명하지 않는다. 자동 단계형 생성은 매 수정마다 새 풀이·편집을 실행한다.
+같은 check 요청에서 독립 풀이만 바뀌어도 새 편집 준비와 대조가 필요하다. 보존된 풀이 사본·결과 해시와 준비 ID가 맞지 않으면 과거 편집 결과를 거부한다. 이 연결은 어떤 입력을 검토 대상으로 삼았는지 확인하며, 실제로 읽고 판단했음을 증명하지는 않는다. 자동 단계형 생성은 매 수정마다 새 풀이·편집을 실행한다.
 
 외부 검토 결과의 `producer.execution_mode`는 `external-attestation`이며 검토자, 요청 모델과 확인된 실제 모델을 구분한다. 확인하지 못한 모델 ID는 null로 둔다. 결과 해시는 실행기가 계산하므로 모델에게 계산시키지 않는다. 외부 검토자의 명시 기록은 실행 진위를 암호학적으로 증명하지 않는다. CLI `blind`는 실제 요청·응답 trace를 연결한다. 예전 연결 정보 없는 결과는 기록으로 보존하되 새 검토 통과 근거로 자동 승격하지 않는다.
 

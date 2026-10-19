@@ -10,6 +10,9 @@ scripts/haean-tool prepare --exam leet --subject 추리논증 --type '논증 평
 scripts/haean-tool prepare --exam psat7 --subject 자료해석 --type '자료 판단(보기)' --topic '공공도서관 이용 통계'
 scripts/haean-tool check RUN RUN/draft.json
 scripts/haean-tool blind RUN
+# 외부 풀이 결과를 받은 경우만 별도 준비. CLI blind는 자동 준비한다.
+# scripts/haean-tool editor-prepare RUN --blind RUN/blind-result.json
+# 새 편집 양식으로 편집 검토를 위임한 뒤 결과 제출:
 scripts/haean-tool review-result RUN RUN/blind-result.json RUN/editorial-result.json --candidate-sha SHA
 scripts/haean-tool export RUN
 scripts/haean-tool feedback RUN --item ITEM-001 --reviewer 팀검토자 --severity A --text '이의 제기 시점이 없습니다.'
@@ -19,7 +22,7 @@ scripts/haean-tool feedback-notes --exam psat7 --subject 자료해석
 scripts/haean-tool plan --exam psat5 --subject 상황판단 --out runs/plan.json
 ```
 
-`RUN`은 prepare가 출력한 경로다. `check` 전후 문항을 수정하면 해시가 달라진다. 검토자는 읽은 버전의 `candidate.sha256`과 `*-review-template.json`의 `input_binding`을 보관한다. 결과는 `*-review.schema.json`에 맞는 `{result, evidence}` 형식이다. `review-result`에는 **검토 당시 값과 결과**를 전달하며, 현재 문항·지침·명세·요청 ID와 다르면 거부된다. 과거 raw 결과에 최신 템플릿을 붙여 통과시키지 않는다. `blind` 명령은 이 연결과 실제 CLI trace를 자동 기록한다. 외부 검토의 실행 주체는 명시 기록이며 검토 진위의 암호학적 보증은 아니다.
+`RUN`은 prepare가 출력한 경로다. `check`는 풀이 양식을 만들고, 풀이 완료 후 `editor-prepare`가 편집자가 대조할 풀이 사본과 편집 양식을 만든다. CLI `blind`는 이 준비까지 수행한다. 검토자는 읽은 버전의 `candidate.sha256`과 양식의 `input_binding`을 보관하고 `{result, evidence}` 형식으로 결과를 반환한다. `review-result`에는 **검토 당시 값과 결과**를 전달한다. 문항·지침·명세·요청 또는 편집 준비에 묶인 풀이가 다르면 거부된다. 풀이를 교체하거나 편집 준비를 새로 했다면 편집 검토도 다시 한다. 과거 결과에 최신 템플릿을 붙이지 않는다. 외부 검토자의 명시 기록은 검토 진위의 암호학적 보증은 아니다.
 
 공통 텍스트 피드백은 `data/feedback/`에 원문·작성자·급수·과목·ID를 보존한다. `--exam team`은 공통 의견이며 모델 의견에는 `--origin model`을 붙인다. 등록은 지침 채택이 아니다. haean-evolve가 근거 문항과 대조해 후보 패치·평가 결과에 연결한다.
 

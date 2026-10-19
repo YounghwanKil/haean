@@ -71,6 +71,9 @@ def main():
     p = sub.add_parser("check", help="수동 작성본 검증 및 독립 검토 패킷 생성")
     p.add_argument("run", type=Path)
     p.add_argument("draft", type=Path)
+    p = sub.add_parser("editor-prepare", help="독립 풀이를 고정하고 새 편집 검토 패킷 준비")
+    p.add_argument("run", type=Path)
+    p.add_argument("--blind", required=True, type=Path)
     p = sub.add_parser("review-result", help="수동 독립 검토 결과로 품질 게이트 평가")
     p.add_argument("run", type=Path)
     p.add_argument("blind", type=Path)
@@ -278,7 +281,8 @@ def dispatch(a):
         if a.command == "experiment": return experiment(a.name, a.baseline)
         return evaluate_suite(Corpus(a.db), a.suite, a.out, a.cases, a.repeats, a.max_revisions, a.model)
     if a.command == "blind":
-        from .review_evidence import current_binding, review_inputs, json_sha256, codex_blind_envelope
+        from .review_evidence import (current_binding, review_inputs, json_sha256, codex_blind_envelope,
+                                     preserve_review_files, invalidate_editor_review, prepare_editor_review)
         binding = current_binding(a.run, "blind")
         brief, _, public = review_inputs(a.run)
         payload = json.loads((a.run / "blind-input.json").read_text())
@@ -288,9 +292,15 @@ def dispatch(a):
         provider = CodexProvider(a.model, trace_dir=a.run / "codex-traces")
         result = provider.call("blind", review_prompt("blind", brief), payload, BlindReview)
         envelope = codex_blind_envelope(a.run, binding, result, a.model, prior_inputs)
+        preserve_review_files(a.run, ["blind-result.json", "blind-usage.json"])
+        invalidate_editor_review(a.run)
         save(a.run / "blind-result.json", envelope)
         save(a.run / "blind-usage.json", provider.usage)
-        return {"result": str(a.run / "blind-result.json")}
+        return {"result": str(a.run / "blind-result.json"),
+                "editorial": prepare_editor_review(a.run, a.run / "blind-result.json")}
+    if a.command == "editor-prepare":
+        from .review_evidence import prepare_editor_review
+        return prepare_editor_review(a.run, a.blind)
     if a.command == "export": return export_review(a.run)
     if a.command == "feedback":
         return feedback(a.run, a.item, feedback_text(a), a.reviewer, a.severity, getattr(a, "origin", "human"))
@@ -321,13 +331,15 @@ def dispatch(a):
             prepare_review_request(a.run)
             state = "needs_revision" if errors else "awaiting_independent_review"
         else:
-            from .review_evidence import load_bound_review
+            from .review_evidence import load_bound_review, verify_editor_blind_pair, preserve_review_files
             blind, blind_evidence = load_bound_review(a.blind, a.run, "blind")
             editorial, editorial_evidence = load_bound_review(a.editorial, a.run, "editor")
+            verify_editor_blind_pair(a.run, a.blind, blind_evidence, a.editorial, editorial_evidence)
             candidate_sha = a.candidate_sha
             if hashlib.sha256((a.run / "candidate.json").read_bytes()).hexdigest() != candidate_sha:
                 raise ValueError("검토 결과 확인 중 문항이 바뀌었습니다. 현행 문항을 다시 검토하세요.")
             errors += review_gate(draft, blind, editorial)
+            preserve_review_files(a.run, ["manual-review.json"])
             save(a.run / "manual-review.json", {"blind": blind.model_dump(), "editorial": editorial.model_dump(),
                  "errors": errors, "candidate_sha256": a.candidate_sha,
                  "evidence": {"blind": blind_evidence, "editorial": editorial_evidence}})
