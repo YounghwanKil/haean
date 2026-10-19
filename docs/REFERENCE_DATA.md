@@ -55,6 +55,27 @@ haean tools track ref-build data/reference-answers-01/refs.jsonl \
 
 원문과 공식 문제지의 바이트 일치, 공식 정답 행 대조, 분류의 정확성, 사람 전문가의 품질 승인은 각각 다르다. 답을 확인해도 임시 유형·빈 영역 분류는 그대로다. 파일 검증은 확보한 근거의 일관성을 검사하며 공식 사이트의 진위나 새로운 사람 검토를 자동으로 보증하지 않는다.
 
+## 원문 근거로 분류를 보강하기
+
+공식 답이 확인되어도 새 트랙의 유형·영역·형식이 자동으로 채워지지는 않는다. 해안에게 “이 참고문항의 원문과 현재 트랙 어휘를 읽고 분류 근거를 정리해줘”라고 요청한다. 원래 임시 유형과 새 트랙의 분류축이 다르면 대응 이유를 기록하고, 불확실한 필드는 그대로 둔다.
+
+```bash
+haean tools track ref-curate data/reference-answers-01/refs.jsonl \
+  --classification data/reference-classification.json --out data/reference-curated-01
+haean tools track ref-build data/reference-curated-01/refs.jsonl \
+  --out data/track-references-curated-01.sqlite
+```
+
+`ref-curate`는 분류를 자동 추론하는 명령이 아니다. 원문을 읽어 만든 분류 manifest를 검증하고 별도 새 자료에 연결한다. v1은 공식 정답 근거가 있는 PSAT 전사를 입력받으며, 이미 분류 근거를 붙인 자료에 다시 덧붙이지 않는다. 재분류할 때는 같은 원본 refs와 새 manifest·출력 경로를 사용한다.
+
+manifest는 `schema_version=1`, `usage=development`, 작성 주체 `origin`(model/human), 실제 `actual_model`(모르면 명시적으로 `null`), 그에 맞는 `status`를 기록한다. 모델 상태는 `source_grounded_model_curation`, 사람 상태는 `source_grounded_human_curation`이다. `human_approved=false`, `semantic_accuracy_verified=false`는 그대로 유지한다. 사람 작성이라고 적었다는 사실만으로 전문가 승인이 되지는 않는다.
+
+각 `records` 행에는 `id`, 원본 행 객체의 `source_record_sha256`, 수정할 `fields`를 둔다. 해시는 원래 JSONL 행 객체를 `json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')`로 직렬화한 SHA256이다. 허용 필드는 `area/item_type/item_format/discourse/stem_type`이며, 각 필드는 `value`, `rationale`, 하나 이상의 `evidence`를 갖는다. 근거의 `pointer`는 `json.loads(ref.text)` 내부의 문자열을 가리키는 JSON Pointer이고 `quote`는 그 문자열에 실제로 존재하는 인용이다. 각 필드에는 `발문·지문·보기·표·선지` 안의 문자열을 인용한 근거가 최소 하나 필요하다. 잠정 유형·검증 상태 같은 메타정보만으로 분류를 보강할 수 없다. 입력 refs와 manifest의 ID 집합은 같아야 한다. 세부 예제는 [합성 테스트](../tests/test_reference_curation.py)를 따른다.
+
+닫힌 트랙 어휘는 수정한 값에 적용한다. 열린 어휘인 PSAT 응답 형식·담화는 `일반/합답형`, `평서문/대화형/규정·사례/표`처럼 관찰 가능한 형식을 로컬 규약으로 명시할 수 있다. 이는 공식 유형명이 아니다. 애매한 필드를 `unknown`이라는 검색 라벨로 채우지 말고 `fields`에서 제외하여 원래 값을 보존한다.
+
+출력은 원래 본문·정답·ID·급수·출처를 그대로 두고 명시한 분류와 `classification_evidence`만 붙인다. 원래 `notes`와 corpus의 임시 분류 표시는 당시 기록이다. 검색 시에는 새 분류 근거와 원래 기록을 함께 본다. 색인 생성·검색 때 기존 전사와 공식답 검사를 원본 행에 그대로 적용하고, 새 분류가 manifest와 일치하는지 확인한다. 분류 근거 파일도 단계형 출제의 입력 스냅샷에 포함한다. 정확 인용·해시 검사 통과는 분류의 의미적 타당성이나 출제 품질 향상을 보증하지 않는다.
+
 ## 검색 확인과 출제 연결
 
 ```json

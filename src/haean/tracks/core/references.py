@@ -79,6 +79,23 @@ class OfficialAnswerEvidence(StrictModel):
         return (self.manifest, self.source_refs, *self.files.values())
 
 
+class ClassificationEvidence(StrictModel):
+    """Frozen source-grounded labels, separate from official answer evidence."""
+    version: Literal[1] = 1
+    manifest: ReferenceProvenance
+    source_refs: ReferenceProvenance
+    source_refs_original_path: str = Field(min_length=1)
+    source_record_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    origin: Literal["model", "human"]
+    actual_model: str | None
+    status: Literal["source_grounded_model_curation", "source_grounded_human_curation"]
+    human_approved: Literal[False] = False
+    semantic_accuracy_verified: Literal[False] = False
+
+    def provenances(self):
+        return (self.manifest, self.source_refs)
+
+
 def _identity(track, grade):
     if track not in NAMES:
         raise ValueError("알 수 없는 트랙: " + track)
@@ -110,6 +127,7 @@ class RefRecord(StrictModel):
     notes: str = ""
     corpus_evidence: CorpusEvidence | None = None
     official_answer_evidence: OfficialAnswerEvidence | None = None
+    classification_evidence: ClassificationEvidence | None = None
 
     @model_validator(mode="after")
     def identity(self):
@@ -123,6 +141,8 @@ class RefRecord(StrictModel):
                 raise ValueError("corpus 전사 증거의 ID·역할·정답 상태가 다릅니다")
         if self.official_answer_evidence and (not self.corpus_evidence or self.answer is None or not self.answer_verified):
             raise ValueError("공식 정답 근거에는 corpus 전사와 별도 정답이 필요합니다")
+        if self.classification_evidence and not self.official_answer_evidence:
+            raise ValueError("분류 오버레이에는 공식 정답 근거가 필요합니다")
         return self
 
 
@@ -190,6 +210,18 @@ def verify_corpus_evidence(record, base, verified):
         raise ValueError("읽는 동안 corpus 전사 패킷이 바뀌었습니다")
     from ...reference_bridge import verify_packet_transcription
     verify_packet_transcription(row, meta, packet_bytes, source_base, original_pdf)
+
+
+def verify_reference_evidence(record, base, verified, extracted=None):
+    """Route overlays through unchanged original corpus and answer checks."""
+    if record.classification_evidence:
+        from ...reference_curation import verify_classification_evidence
+        verify_classification_evidence(record, base, verified, extracted)
+        return
+    verify_corpus_evidence(record, base, verified)
+    if record.official_answer_evidence:
+        from ...reference_answers import verify_official_answer_evidence
+        verify_official_answer_evidence(record, base, verified, extracted)
 
 
 class RefQuery(StrictModel):
@@ -302,10 +334,7 @@ class ReferenceIndex:
                     if verified[source] != row.provenance.sha256:
                         raise ValueError("출처 파일 SHA256 불일치")
                     row.provenance.file = str(source)
-                    verify_corpus_evidence(row, path.parent, verified)
-                    if row.official_answer_evidence:
-                        from ...reference_answers import verify_official_answer_evidence
-                        verify_official_answer_evidence(row, path.parent, verified, extracted)
+                    verify_reference_evidence(row, path.parent, verified, extracted)
                     records.append(row)
                 except (ValueError, OSError, KeyError, TypeError) as exc:
                     errors.append({"line": number, "file": str(path), "error": str(exc)[:300]})
@@ -375,10 +404,7 @@ class ReferenceIndex:
             if verified_sources[source] != record.provenance.sha256:
                 raise ValueError(f"{record.id}: 출처 파일 SHA256이 바뀌어 참고 자료를 사용할 수 없습니다. 재검토 후 새 색인을 만드세요.")
             try:
-                verify_corpus_evidence(record, self.path.parent, verified_sources)
-                if record.official_answer_evidence:
-                    from ...reference_answers import verify_official_answer_evidence
-                    verify_official_answer_evidence(record, self.path.parent, verified_sources, extracted)
+                verify_reference_evidence(record, self.path.parent, verified_sources, extracted)
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 raise ValueError(f"{record.id}: corpus 증거를 확인하지 못해 참고 자료를 사용할 수 없습니다: {exc}") from exc
         used = {f: getattr(query, f) for f in FACETS if getattr(query, f) not in (None, "")}

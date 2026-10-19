@@ -35,6 +35,10 @@ def add_parser(subparsers):
     answers.add_argument("source_refs", type=Path)
     answers.add_argument("--evidence", type=Path, required=True)
     answers.add_argument("--out", type=Path, required=True)
+    curate = commands.add_parser("ref-curate", help="원문 인용 근거가 있는 분류 오버레이를 새 참고자료로 내보내기")
+    curate.add_argument("source_refs", type=Path)
+    curate.add_argument("--classification", type=Path, required=True)
+    curate.add_argument("--out", type=Path, required=True)
     attach = commands.add_parser("attach", help="기존 prepared run에 과목별 소재·설계 명세 연결")
     attach.add_argument("run", type=Path)
     attach.add_argument("brief", type=Path)
@@ -179,4 +183,7 @@ def dispatch(args):
     if operation == "ref-answers":
         from .reference_answers import enrich
         return enrich(args.source_refs, args.evidence, args.out)
+    if operation == "ref-curate":
+        from .reference_curation import curate
+        return curate(args.source_refs, args.classification, args.out)
     raise ValueError(f"알 수 없는 track 명령: {operation}")

@@ -177,6 +177,9 @@ def _source_files(references):
                 if official:
                     files.extend((official["manifest"], official["source_refs"]))
                     files.extend(official["files"].values())
+                classification = hit.get("classification_evidence")
+                if classification:
+                    files.extend((classification["manifest"], classification["source_refs"]))
                 for source in files:
                     path = str(Path(source["file"]).resolve())
                     digest = source["sha256"]
