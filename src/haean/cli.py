@@ -196,6 +196,12 @@ def main():
         else:
             p.add_argument('--item', action='append', required=True)
             p.add_argument('--all-versions', action='store_true')
+    p = sub.add_parser('novelty-review', help='선택 원문쌍을 별도 Codex 1회로 검토; 현행 승인·상태 변경 없음')
+    p.add_argument('run', type=Path, help='candidate.json을 가진 1–4문항 묶음 run')
+    p.add_argument('--out', required=True, type=Path, help='원 run 밖의 새 출력 폴더')
+    p.add_argument('--neighbors', type=int, default=1)
+    p.add_argument('--history', type=Path, default=Path('data/generated.sqlite'))
+    p.add_argument('--model', default='gpt-6-astra')
     p = sub.add_parser("verify-source-profiles", help="원문 ID·해시·삽입 필드 읽기 전용 검증; 의미 판정 아님")
     p.add_argument("input", type=Path)
     p.add_argument("--out", type=Path, help="새 보고서 경로; 기존 파일 덮어쓰기 금지")
@@ -231,6 +237,9 @@ def dispatch(a):
     if a.command == "verify-source-profiles":
         from .source_identity import verify
         return verify(a.input, a.out)
+    if a.command == 'novelty-review':
+        from .novelty_review import novelty_review
+        return novelty_review(a.run, a.out, neighbors=a.neighbors, history=a.history, model=a.model)
     if a.command in {'novelty-memory', 'novelty-get'}:
         from . import novelty
         if a.command == 'novelty-memory':
