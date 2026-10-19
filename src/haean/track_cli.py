@@ -27,6 +27,10 @@ def add_parser(subparsers):
     build = commands.add_parser("ref-build", help="출처를 검증한 정제 사례로 별도 새 색인 생성")
     build.add_argument("jsonl", type=Path, nargs="+")
     build.add_argument("--out", type=Path, required=True)
+    export = commands.add_parser("ref-export", help="명시 선택한 PSAT corpus 전사를 읽기 전용으로 추출")
+    export.add_argument("--corpus", type=Path, required=True)
+    export.add_argument("--selection", type=Path, required=True)
+    export.add_argument("--out", type=Path, required=True)
     attach = commands.add_parser("attach", help="기존 prepared run에 과목별 소재·설계 명세 연결")
     attach.add_argument("run", type=Path)
     attach.add_argument("brief", type=Path)
@@ -165,4 +169,7 @@ def dispatch(args):
                     raise ValueError("색인 경로가 이미 존재합니다. 기존 파일은 보존했습니다.") from exc
             return {**result, "index": str(args.out) if not result["errors"] else None,
                     "existing_data_preserved": True}
+    if operation == "ref-export":
+        from .reference_bridge import export
+        return export(args.corpus, args.selection, args.out)
     raise ValueError(f"알 수 없는 track 명령: {operation}")

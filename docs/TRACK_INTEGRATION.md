@@ -19,6 +19,8 @@ haean tools track ref-build data/curated-references.jsonl --out data/track-refer
 haean tools track ref-search data/my-query.json --index data/track-references.sqlite
 ```
 
+기존 corpus에 등록한 완전한 PSAT 전사는 `track ref-export`로 선택한 ID만 정제 색인 입력으로 내보낼 수 있다. [원문 DB와 정제 참고자료 연결](REFERENCE_DATA.md)에 명시 선택 파일과 출처 검증 절차가 있다. 누락된 분류를 자동 추정하거나 통계·검토 행을 전문 사례로 바꾸지 않는다. 색인 수와 실제 요청의 검색 결과 수를 구분한다.
+
 새 트랙 명세 예시는 다음과 같다. 원문 자료가 아닌 합성 입력 예다.
 
 ```json

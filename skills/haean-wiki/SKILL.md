@@ -7,6 +7,8 @@ description: 해안 자료·검토 이력을 출처가 연결된 로컬 지식 �
 
 원문 → SQLite 검색 DB → 지속적으로 갱신하는 `data/wiki`의 3층을 사용한다. DB는 원문을 찾는 도구이며 위키는 읽고 종합한 지식이다. 원문·카톡·문항·로컬 위키를 GitHub Wiki나 코드 저장소에 올리지 않는다. GitHub Wiki는 사용 설명서다.
 
+과목별 정제 참고 색인은 원문 DB와 별개 파생 자료다. 기존 PSAT 전사를 연결할 때는 `docs/REFERENCE_DATA.md`의 명시 ID 선택·`track ref-export` 절차를 따른다. 색인 생성만으로 요청의 정확한 분류 조건에 맞는 참고 문항이 확보됐다고 하지 않는다. 원문·전사 확인, 정답 확인, 분류 상태를 구분해 위키에 남긴다.
+
 ## 자료를 지식으로 축적하기
 
 1. `data/wiki/index.md`와 관련 페이지·동명 JSON 출처 기록을 읽는다. 없으면 `scripts/haean-tool wiki init`을 실행한다.

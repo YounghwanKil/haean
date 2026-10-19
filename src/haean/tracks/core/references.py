@@ -7,6 +7,7 @@ Raw source content stays local; each record keeps an explicit source locator.
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from collections import Counter
 from pathlib import Path
@@ -42,6 +43,25 @@ class ReferenceProvenance(StrictModel):
         return self
 
 
+class CorpusEvidence(StrictModel):
+    """Optional evidence for explicitly selected PSAT transcription exports."""
+    version: Literal[1] = 1
+    source_record_id: str = Field(min_length=1)
+    source_record_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_record: ReferenceProvenance
+    packet: ReferenceProvenance
+    selection: ReferenceProvenance
+    original_meta: dict
+    transcription_verified: Literal[True]
+    answer_verified: Literal[False]
+    label_status: Literal["provisional"]
+    semantic_accuracy_verified: Literal[False] = False
+    official_bytes_verified: Literal[False] = False
+
+    def files(self):
+        return (self.source_record, self.packet, self.selection)
+
+
 def _identity(track, grade):
     if track not in NAMES:
         raise ValueError("알 수 없는 트랙: " + track)
@@ -71,13 +91,85 @@ class RefRecord(StrictModel):
     answer_verified: bool = False
     tags: list[str] = Field(default_factory=list)
     notes: str = ""
+    corpus_evidence: CorpusEvidence | None = None
 
     @model_validator(mode="after")
     def identity(self):
         _identity(self.track, self.grade)
         for value in (self.id, self.source, *self.tags):
             _allowed_source(value)
+        if self.corpus_evidence:
+            if (self.id != self.corpus_evidence.source_record_id or self.role != "item"
+                    or not self.track.startswith("psat_") or self.item is not None
+                    or self.answer is not None or self.answer_verified):
+                raise ValueError("corpus 전사 증거의 ID·역할·정답 상태가 다릅니다")
         return self
+
+
+def verify_corpus_evidence(record, base, verified):
+    """Verify export snapshots without reopening or hashing the mutable corpus DB."""
+    evidence = record.corpus_evidence
+    if evidence is None:
+        return
+    for source in evidence.files():
+        path = Path(source.file)
+        path = (path if path.is_absolute() else base / path).resolve()
+        _allowed_source(str(path))
+        if path not in verified:
+            verified[path] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if verified[path] != source.sha256:
+            raise ValueError("corpus 증거 파일 SHA256 불일치: " + path.name)
+        source.file = str(path)
+    snapshot_bytes = Path(evidence.source_record.file).read_bytes()
+    if hashlib.sha256(snapshot_bytes).hexdigest() != evidence.source_record.sha256:
+        raise ValueError("읽는 동안 corpus 행 스냅샷이 바뀌었습니다")
+    snapshot = json.loads(snapshot_bytes)
+    row = snapshot["record"]
+    digest = hashlib.sha256(json.dumps(row, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+    meta = json.loads(row["meta"])
+    stable_locator = row["locator"].split("::", 1)[1] if "::" in row["locator"] else row["locator"].split("#", 1)[-1]
+    expected_id = hashlib.sha256((row["sha"] + "#" + stable_locator).encode()).hexdigest()[:24]
+    source_base = Path(snapshot["source_path_base"])
+    original_pdf = Path(snapshot["source"]["path"])
+    original_pdf = (original_pdf if original_pdf.is_absolute() else source_base / original_pdf).resolve()
+    original_packet = Path(meta["packet_path"])
+    original_packet = (original_packet if original_packet.is_absolute() else source_base / original_packet).resolve()
+    selection_bytes = Path(evidence.selection.file).read_bytes()
+    if hashlib.sha256(selection_bytes).hexdigest() != evidence.selection.sha256:
+        raise ValueError("읽는 동안 corpus 선택 스냅샷이 바뀌었습니다")
+    selection = json.loads(selection_bytes)
+    chosen = [r for r in selection["records"] if r.get("id") == record.id]
+    if (selection.get("usage") != "development" or len(chosen) != 1
+            or chosen[0].get("track") != record.track or chosen[0].get("grade") != record.grade
+            or chosen[0].get("usage") != "development"):
+        raise ValueError("명시적인 corpus 선택과 참고 자료가 다릅니다")
+    subjects = {"psat_verbal": "언어논리", "psat_data": "자료해석", "psat_situation": "상황판단"}
+    if (digest != evidence.source_record_sha256 or row["id"] != record.id or row["id"] != expected_id
+            or row["text"] != record.text or row["sha"] != record.provenance.sha256
+            or row["locator"] != record.provenance.locator or row["role"] != "example"
+            or row["exam"] != f"psat{record.grade}" or meta != evidence.original_meta
+            or meta["fields"]["과목"] != subjects.get(record.track)
+            or meta["fields"]["문항유형"] != record.item_type
+            or meta["fields"]["연도"] != record.year or meta["fields"]["문항 번호"] != record.number
+            or snapshot["source"]["name"] != record.source
+            or snapshot["source"]["sha"] != record.provenance.sha256
+            or original_pdf != Path(record.provenance.file).resolve()
+            or original_packet != Path(evidence.packet.file).resolve()
+            or any((record.area, record.item_format, record.discourse, record.stem_type))
+            or meta["packet_sha256"] != evidence.packet.sha256
+            or meta.get("transcription_verified") is not True
+            or meta.get("answer_verified") is not False
+            or meta.get("label_status") != "provisional"
+            or meta["fields"].get("정답") is not None
+            or meta["fields"].get("정답 검증") is not False
+            or meta["source"].get("official_bytes_verified", False) is not False):
+        raise ValueError("corpus 전사 원본과 참고 레코드가 다릅니다")
+    packet_bytes = Path(evidence.packet.file).read_bytes()
+    if hashlib.sha256(packet_bytes).hexdigest() != evidence.packet.sha256:
+        raise ValueError("읽는 동안 corpus 전사 패킷이 바뀌었습니다")
+    from ...reference_bridge import verify_packet_transcription
+    verify_packet_transcription(row, meta, packet_bytes, source_base, original_pdf)
 
 
 class RefQuery(StrictModel):
@@ -190,8 +282,9 @@ class ReferenceIndex:
                     if verified[source] != row.provenance.sha256:
                         raise ValueError("출처 파일 SHA256 불일치")
                     row.provenance.file = str(source)
+                    verify_corpus_evidence(row, path.parent, verified)
                     records.append(row)
-                except (ValueError, OSError) as exc:
+                except (ValueError, OSError, KeyError, TypeError) as exc:
                     errors.append({"line": number, "file": str(path), "error": str(exc)[:300]})
         duplicate = [key for key, count in Counter((r.track, r.grade, r.id) for r in records).items() if count > 1]
         if duplicate:
@@ -258,6 +351,10 @@ class ReferenceIndex:
                     raise ValueError(f"{record.id}: 현재 출처 파일을 확인하지 못해 참고 자료를 사용할 수 없습니다") from exc
             if verified_sources[source] != record.provenance.sha256:
                 raise ValueError(f"{record.id}: 출처 파일 SHA256이 바뀌어 참고 자료를 사용할 수 없습니다. 재검토 후 새 색인을 만드세요.")
+            try:
+                verify_corpus_evidence(record, self.path.parent, verified_sources)
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                raise ValueError(f"{record.id}: corpus 증거를 확인하지 못해 참고 자료를 사용할 수 없습니다: {exc}") from exc
         used = {f: getattr(query, f) for f in FACETS if getattr(query, f) not in (None, "")}
         missing = [] if len(hits) >= query.k else [f"{query.track} {query.role} 사례가 조건 {used}에서 {len(hits)}개뿐입니다(요청 {query.k}). 완화하지 않았습니다."]
         return {"schema_version": SCHEMA_VERSION, "usage": "development", "query": query.model_dump(),

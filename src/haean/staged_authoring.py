@@ -169,11 +169,16 @@ def _source_files(references):
     for queries in references.values():
         for result in queries.values():
             for hit in result["hits"]:
-                path = str(Path(hit["provenance"]["file"]).resolve())
-                digest = hit["provenance"]["sha256"]
-                if path in sources and sources[path] != digest:
-                    raise ValueError("동일 참고 파일의 출처 해시가 다릅니다")
-                sources[path] = digest
+                files = [hit["provenance"]]
+                evidence = hit.get("corpus_evidence")
+                if evidence:
+                    files.extend(evidence[key] for key in ("packet", "source_record", "selection"))
+                for source in files:
+                    path = str(Path(source["file"]).resolve())
+                    digest = source["sha256"]
+                    if path in sources and sources[path] != digest:
+                        raise ValueError("동일 참고 파일의 출처 해시가 다릅니다")
+                    sources[path] = digest
     return sources
 
 
