@@ -10,9 +10,11 @@ from .models import StrictModel, Brief, Draft
 from .pipeline import prepare, run_pipeline, save
 from .codex_runtime import CodexProvider
 from .corpus import Corpus
+from .evaluation_input import build_evaluation_input
 
 ROOT = Path(__file__).resolve().parents[2]
 DIMENSIONS = {"validity", "exam_fit", "reasoning_value", "distractors", "language", "explanation", "originality", "workload"}
+PROTOCOL_VERSION = "haean-evaluation-v3"
 
 
 class Dimension(StrictModel):
@@ -50,7 +52,10 @@ def harness_fingerprint():
 
 
 def frozen_fingerprint(suite: Path):
-    paths = [ROOT / "evals/protocol.md", ROOT / "evals/rubric.md", Path(__file__), suite.resolve()]
+    paths = [ROOT / "evals/protocol.md", ROOT / "evals/rubric.md", Path(__file__),
+             ROOT / "src/haean/evaluation_input.py", ROOT / "src/haean/evaluation_run.py",
+             ROOT / "src/haean/execution_provenance.py", ROOT / "src/haean/composition_adapter.py",
+             ROOT / "src/haean/composition/service.py", suite.resolve()]
     # External private suites are fingerprinted without copying their contents.
     return {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
@@ -67,6 +72,7 @@ def evaluate_suite(corpus: Corpus, suite_path: Path, out: Path, case_ids=None,
     lock = frozen_fingerprint(suite_path)
     harness = harness_fingerprint()
     manifest = {"suite": suite["version"], "split": suite["split"], "cases": [c["id"] for c in cases],
+                "evaluation_protocol": PROTOCOL_VERSION,
                 "model": model, "repeats": repeats, "max_revisions": max_revisions,
                 "mode": "codex-prompt-pipeline", "humanizer": "not_applied", "expert_calibrated": False,
                 "codex_version": subprocess.run(["codex", "--version"], capture_output=True, text=True).stdout.strip(),
@@ -84,8 +90,12 @@ def evaluate_suite(corpus: Corpus, suite_path: Path, out: Path, case_ids=None,
                 draft = run_pipeline(run, provider, max_revisions)
                 status = json.loads((run / "status.json").read_text())
                 review = json.loads((run / f"review-r{status['revision']}.json").read_text())
-                result = provider.call("evaluate", (ROOT / "evals/rubric.md").read_text(),
-                                       {"brief": case["brief"], "draft": draft.model_dump(), "review": review}, Evaluation)
+                payload = build_evaluation_input(case["brief"], draft, review,
+                    json.loads((run / "context.json").read_text()))
+                save(run / "evaluation-input.json", payload)
+                result = provider.call("evaluate", (ROOT / "evals/rubric.md").read_text(), payload, Evaluation)
+                if frozen_fingerprint(suite_path) != lock or harness_fingerprint() != harness:
+                    raise ValueError("평가 중 코드/평가 기준이 바뀌었습니다. 원 응답을 보존하고 새 실험으로 재실행하세요")
                 if {i.item_id for i in result.items} != {i.id for i in draft.items} or len(result.items) != len(draft.items):
                     raise ValueError("평가 문항 누락·중복")
                 save(run / "evaluation.json", result.model_dump())
@@ -107,7 +117,7 @@ def evaluate_suite(corpus: Corpus, suite_path: Path, out: Path, case_ids=None,
 
 
 def compare(baseline: dict, candidate: dict):
-    for field in ("suite", "split", "model", "repeats", "max_revisions", "mode", "humanizer", "frozen"):
+    for field in ("suite", "split", "model", "repeats", "max_revisions", "mode", "humanizer", "frozen", "evaluation_protocol"):
         if baseline.get(field) != candidate.get(field): raise ValueError("동일 조건이 아닙니다: " + field)
     index = lambda x: {(r["case_id"], r["repeat"]): r for r in x["results"]}
     a, b = index(baseline), index(candidate)
@@ -140,6 +150,7 @@ def experiment(name: str, baseline_path: Path):
     save(out / "baseline.json", baseline)
     save(out / "lock.json", {"frozen": baseline["frozen"], "baseline_harness": baseline["harness"],
                              "allowed": ["skills/", "src/haean/prompts/", "src/haean/corpus.py", "src/haean/pipeline.py"],
-                             "forbidden": ["evals/", "src/haean/evaluation.py", "holdout/", "기존 결과"]})
+                             "forbidden": ["evals/", "src/haean/evaluation.py", "src/haean/evaluation_input.py",
+                                           "src/haean/evaluation_run.py", "holdout/", "기존 결과"]})
     (out / "proposal.md").write_text("# 개선 가설\n\n실패 문항과 실행 단계:\n\n원인 가설:\n\n변경 대상과 이유:\n\n예상 퇴행과 검증:\n", encoding="utf-8")
     return {"experiment": str(out), "state": "proposal_pending"}

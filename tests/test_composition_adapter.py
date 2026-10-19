@@ -40,7 +40,7 @@ def inputs(tmp_path, monkeypatch):
     for key, data in (("plan", plan), ("design", design), ("mapping", mapping)):
         save(paths[key], data)
 
-    def fake_load(path):
+    def fake_load(path, *, verify_runtime=True):
         value = read(path)
         for ref in value["profile"]["files"]:
             adapter._verify_ref(ref, "source")

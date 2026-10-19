@@ -132,12 +132,25 @@ def capture(destination: Path, *, inputs: dict[str, Path], instructions: dict[st
     return result
 
 
-def verify(manifest_path: Path, *, expected_sha256: str | None = None) -> dict:
+def verify(manifest_path: Path, *, expected_sha256: str | None = None,
+           verify_runtime: bool = True) -> dict:
     """Fail closed on missing/changed inputs, code or snapshot copies.
 
     An optional caller-held digest also binds the manifest itself. The local
     seal catches accidental edits; neither mechanism authenticates a reviewer.
+    Archived reevaluation may explicitly skip comparison to the current package,
+    while still checking every stored runtime copy, source input and local seal.
     """
+    if type(verify_runtime) is not bool:
+        raise ValueError("verify_runtime은 bool이어야 합니다")
+
+    def report(issues):
+        result = {"valid": not issues, "issues": issues}
+        if not verify_runtime:
+            result.update(runtime_verification="archived_snapshot_only", current_runtime_verified=False,
+                          assurance="Stored snapshots and source inputs are checked; current package runtime equality is not verified.")
+        return result
+
     manifest_path = Path(manifest_path)
     root = manifest_path.parent.resolve()
     issues = []
@@ -145,13 +158,13 @@ def verify(manifest_path: Path, *, expected_sha256: str | None = None) -> dict:
         raw = manifest_path.read_bytes()
         seal = (root / "manifest.sha256").read_text().strip()
         if digest(raw) != seal or (expected_sha256 is not None and digest(raw) != expected_sha256):
-            return {"valid": False, "issues": ["manifest_hash_mismatch"]}
+            return report(["manifest_hash_mismatch"])
         manifest = json.loads(raw, parse_constant=_reject_constant)
         _validate_manifest(manifest)
         if manifest["version"] != VERSION:
-            return {"valid": False, "issues": ["unsupported_manifest_version"]}
-        current = runtime_sources()
-        if set(current) != set(manifest["runtime"]):
+            return report(["unsupported_manifest_version"])
+        current = runtime_sources() if verify_runtime else None
+        if verify_runtime and set(current) != set(manifest["runtime"]):
             issues.append("runtime_inventory_changed")
 
         def check_copy(record, label):
@@ -167,7 +180,7 @@ def verify(manifest_path: Path, *, expected_sha256: str | None = None) -> dict:
 
         for name, record in manifest["runtime"].items():
             check_copy(record, "runtime:" + name)
-            if name not in current or digest(current[name]) != record["sha256"]:
+            if verify_runtime and (name not in current or digest(current[name]) != record["sha256"]):
                 issues.append("runtime:" + name + ":source_changed")
         for name, record in manifest["inputs"].items():
             check_copy(record, "input:" + name)
@@ -180,4 +193,4 @@ def verify(manifest_path: Path, *, expected_sha256: str | None = None) -> dict:
         check_copy(manifest["schemas"], "schemas")
     except (OSError, ValueError, KeyError, TypeError, RecursionError):
         issues.append("invalid_or_missing_manifest")
-    return {"valid": not issues, "issues": issues}
+    return report(issues)

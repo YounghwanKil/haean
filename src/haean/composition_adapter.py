@@ -77,11 +77,11 @@ def _verify_ref(ref, label):
     return path
 
 
-def _load_design(path):
+def _load_design(path, *, verify_runtime=True):
     # Deferred import lets the adapter and common composition package evolve
     # independently; the common loader owns source/profile/runtime validation.
     from .composition import load_design
-    return load_design(path)
+    return load_design(path, verify_runtime=verify_runtime)
 
 
 def _slots(rows, label, count):
@@ -238,8 +238,14 @@ def bind(plan_path, design_path, mapping_path, out: Path) -> Path:
     return path
 
 
-def load_packet(packet_path, plan_path):
-    """Fail closed on changes to raw plan/design/mapping or source/runtime files."""
+def load_packet(packet_path, plan_path, *, verify_runtime=True):
+    """Check raw plan/design/mapping and source evidence.
+
+    Only explicit archived reevaluation may skip current runtime equality;
+    stored runtime copies and all original source/output hashes remain required.
+    """
+    if type(verify_runtime) is not bool:
+        raise ValueError("verify_runtime은 bool이어야 합니다")
     from .full_exam import load_plan
     packet = _read(packet_path)
     if (not isinstance(packet, dict) or packet.get("schema_version") != 1 or packet.get("adapter_version") != VERSION
@@ -249,7 +255,9 @@ def load_packet(packet_path, plan_path):
         _verify_ref(packet.get(key), key)
     if _sha(plan_path) != packet["plan"]["sha256"]:
         raise ValueError("composition plan 원문 해시 불일치")
-    design, plan = _load_design(packet["design"]["path"]), load_plan(plan_path)
+    design = (_load_design(packet["design"]["path"]) if verify_runtime else
+              _load_design(packet["design"]["path"], verify_runtime=False))
+    plan = load_plan(plan_path)
     original_mapping = _read(packet["mapping"]["path"])
     rows = original_mapping.get("bindings") if isinstance(original_mapping, dict) else original_mapping
     expected = _validate_assignment(plan, design, rows)
@@ -310,8 +318,13 @@ def attach_bundle(run, *, plan_path, packet_path, slots):
             "packet": _file_ref(packet_path), "plan": _file_ref(plan_path)}
 
 
-def validate_bundle(run, expected, draft=None):
-    """Check immutable writer/editor input; return only candidate content errors."""
+def validate_bundle(run, expected, draft=None, *, verify_runtime=True):
+    """Check immutable writer/editor input; return only candidate content errors.
+
+    Archived evaluation may pass ``verify_runtime=False``; this still binds the
+    stored code snapshots and inputs, without claiming current runtime equality.
+    Generation and assembly retain the strict default.
+    """
     run = Path(run).resolve()
     if not isinstance(expected, dict) or set(expected) != {"sidecar", "binding", "packet", "plan"}:
         raise ValueError("composition manifest의 필수 sidecar·binding 선언 누락")
@@ -329,7 +342,7 @@ def validate_bundle(run, expected, draft=None):
         if Path(ref["path"]) != run / name:
             raise ValueError("composition 다른 묶음의 입력 참조")
         _verify_ref(ref, name)
-    packet = load_packet(expected["packet"]["path"], expected["plan"]["path"])
+    packet = load_packet(expected["packet"]["path"], expected["plan"]["path"], verify_runtime=verify_runtime)
     context = _read(run / "context.json")
     slots = sidecar["assignment"]
     by_id = {row["id"]: row for row in _read(expected["plan"]["path"])["slots"]}

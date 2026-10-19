@@ -139,6 +139,11 @@ def main():
     p.add_argument("--repeats", type=int, default=1)
     p.add_argument("--max-revisions", type=int, default=1)
     p.add_argument("--model", default="gpt-6-astra")
+    p = sub.add_parser("evaluate-run", help="저장된 문항 버전을 원본 변경 없이 새 평가 계약으로 평가")
+    p.add_argument("run", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--revision", type=int, help="생략하면 현 candidate, 지정하면 보존된 draft-rN/review-rN")
+    p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("compare")
     p.add_argument("baseline", type=Path)
     p.add_argument("candidate", type=Path)
@@ -294,6 +299,9 @@ def dispatch(a):
         if a.command == "compare": return compare(json.loads(a.baseline.read_text()), json.loads(a.candidate.read_text()))
         if a.command == "experiment": return experiment(a.name, a.baseline)
         return evaluate_suite(Corpus(a.db), a.suite, a.out, a.cases, a.repeats, a.max_revisions, a.model)
+    if a.command == "evaluate-run":
+        from .evaluation_run import evaluate_run
+        return evaluate_run(a.run, a.out, revision=a.revision, model=a.model)
     if a.command == "blind":
         from .review_evidence import (current_binding, review_inputs, json_sha256, codex_blind_envelope,
                                      preserve_review_files, invalidate_editor_review, prepare_editor_review)

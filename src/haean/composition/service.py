@@ -135,8 +135,13 @@ def design(profile_path, out, *, seed=0, options=None, ledger_path=None):
         raise
 
 
-def load_design(path):
-    """Fail closed on changed input, code, profile or output before binding."""
+def load_design(path, *, verify_runtime: bool = True):
+    """Check sealed design evidence, requiring current runtime equality by default.
+
+    ``verify_runtime=False`` is for archived reevaluation, not new generation:
+    stored runtime bytes and original inputs/outputs are still verified. It does
+    not establish compatibility with, or equality to, the current runtime.
+    """
     path = Path(path).resolve()
     if sha(path) != path.with_suffix(".sha256").read_text().strip():
         raise ValueError("회차 설계 출력 해시 불일치")
@@ -151,11 +156,13 @@ def load_design(path):
                                                       for k in ("exam", "subject", "track", "exam_grade")):
             raise ValueError("설계 프로필·시험 정보 불일치")
         reference = value["execution_snapshot"]
-        check = provenance.verify(Path(reference["path"]), expected_sha256=reference["sha256"])
+        check = provenance.verify(Path(reference["path"]), expected_sha256=reference["sha256"],
+                                  verify_runtime=verify_runtime)
         if not check["valid"]:
             raise ValueError("회차 설계 실행 근거 불일치: " + "; ".join(check["issues"]))
         outputs = value["output_snapshot"]
-        check = provenance.verify(Path(outputs["path"]), expected_sha256=outputs["sha256"])
+        check = provenance.verify(Path(outputs["path"]), expected_sha256=outputs["sha256"],
+                                  verify_runtime=verify_runtime)
         if not check["valid"]:
             raise ValueError("회차 설계 산출 근거 불일치: " + "; ".join(check["issues"]))
         output_manifest = read_json(outputs["path"])
