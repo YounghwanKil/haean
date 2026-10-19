@@ -24,6 +24,8 @@ LEET 언어이해는 아래의 별도 파일럿 범위로 지원합니다. PSAT 
 
 별도 선택 기능인 `compose`는 로컬 규칙으로 시험별 형식·내용설계를 만듭니다. LEET 추리논증·PSAT 5급 40문항과 PSAT 7급 25문항을 지원하며, 기존 배정표의 ID·유형·난도·공통지문을 명시적으로 연결한 뒤 작성·검토합니다. 언어이해는 별도 `reading` 경로를 사용합니다. [회차 설계 사용법](Composition)을 참고하세요.
 
+회차에 참고문항을 붙일 때는 원문을 읽고 슬롯별 적용 이유와 부족한 점을 정한 뒤 `haean tools exam-ref-bind PLAN --index INDEX --selection SELECTION --out NEW_DIR`를 사용합니다. 선택한 전문과 출처 사본을 새 계획에 연결하며 기존 계획과 선택은 보존합니다. 전체 슬롯의 `coverage.json`에서 연결·기존 선택·결손을 확인할 수 있습니다. 자료 연결은 유형 적합성이나 문항 품질 승인이 아닙니다. 새 계획으로 `compose bind`를 수행한 뒤 출제합니다. [선택 파일과 사용법](https://github.com/YounghwanKil/haean/blob/main/docs/EXAM_INPUTS.md#선택한-참고문항을-새-계획에-붙이기)을 확인하세요.
+
 ## PSAT 검토와 언어이해 파일럿
 
 PSAT 검토는 공통 독립 풀이·편집 역할에 급수·과목별 지침을 자동 연결한다. [과목별 검토 기준](https://github.com/YounghwanKil/haean/blob/main/docs/PSAT_REVIEW.md)을 참고한다. 새 지침의 실행 결과를 이전 회차에 소급하지 않는다.

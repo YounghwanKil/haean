@@ -414,6 +414,68 @@ class ReferenceIndex:
                               f"{'AND' if where else 'WHERE'} {facet} IS NOT NULL GROUP BY {facet} ORDER BY 2 DESC", args)}
         return out
 
+    @staticmethod
+    def _decode_row(row):
+        record = RefRecord.model_validate_json(row[-1])
+        expected = (record.track, record.grade if record.grade is not None else NONE_GRADE, record.id,
+                    record.role, norm(record.area), norm(record.item_type), norm(record.item_format),
+                    norm(record.discourse), norm(record.stem_type), record.year)
+        if row[:-1] != expected:
+            raise ValueError("참고 색인 행의 ID·분류 값과 저장 본문이 다릅니다. 색인을 다시 검토하세요.")
+        _allowed_source(str(Path(record.provenance.file).resolve()))
+        return record
+
+    def _verify_records(self, records):
+        verified_sources, extracted = {}, {}
+        for record in records:
+            source = Path(record.provenance.file).resolve()
+            if source not in verified_sources:
+                if not source.is_file():
+                    raise ValueError(f"{record.id}: 현재 출처 파일이 없어 참고 자료를 사용할 수 없습니다")
+                try:
+                    verified_sources[source] = hashlib.sha256(source.read_bytes()).hexdigest()
+                except OSError as exc:
+                    raise ValueError(f"{record.id}: 현재 출처 파일을 확인하지 못해 참고 자료를 사용할 수 없습니다") from exc
+            if verified_sources[source] != record.provenance.sha256:
+                raise ValueError(f"{record.id}: 출처 파일 SHA256이 바뀌어 참고 자료를 사용할 수 없습니다. 재검토 후 새 색인을 만드세요.")
+            try:
+                verify_reference_evidence(record, self.path.parent, verified_sources, extracted)
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                raise ValueError(f"{record.id}: corpus 증거를 확인하지 못해 참고 자료를 사용할 수 없습니다: {exc}") from exc
+        return verified_sources
+
+    def select_ids(self, *, track, grade, ids, role="item"):
+        """Look up exact IDs without a search cap or facet/type fallback.
+
+        Missing identities fail the whole selection. SQL/payload identity and
+        every source/evidence check are the same checks used for search hits.
+        """
+        _identity(track, grade)
+        if role not in {"item", "case"}:
+            raise ValueError("참고 역할은 item 또는 case여야 합니다")
+        if (not isinstance(ids, list) or not ids
+                or any(not isinstance(i, str) or not i.strip() for i in ids)):
+            raise ValueError("명시적으로 선택한 참고 ID 목록이 필요합니다")
+        if len(ids) != len(set(ids)):
+            raise ValueError("선택 참고 ID가 중복됩니다")
+        records = []
+        for source_id in ids:
+            row = self.db.execute(
+                "SELECT track, grade, id, role, area, item_type, item_format, discourse, stem_type, year, record "
+                "FROM track_refs WHERE track=? AND grade=? AND id=?",
+                (track, grade if grade is not None else NONE_GRADE, source_id)).fetchone()
+            if row is None:
+                raise ValueError(f"선택 참고 ID가 해당 트랙·급수에 없습니다: {track}/{grade}/{source_id}")
+            record = self._decode_row(row)
+            if record.role != role:
+                raise ValueError(f"선택 참고 역할 불일치: {source_id} ({record.role})")
+            records.append(record)
+        families = [r.review_case_evidence.family_id for r in records if r.review_case_evidence]
+        if len(families) != len(set(families)):
+            raise ValueError("참고 색인에 중복 검토 사례 family_id가 있습니다")
+        self._verify_records(records)
+        return records
+
     def search(self, query: RefQuery):
         query = RefQuery.model_validate(query.model_dump())
         where, args = ["track = ?", "grade = ?", "role = ?"], [query.track, query.grade if query.grade is not None else NONE_GRADE, query.role]
@@ -430,14 +492,7 @@ class ReferenceIndex:
         for row in self.db.execute(
                 "SELECT track, grade, id, role, area, item_type, item_format, discourse, stem_type, year, record "
                 "FROM track_refs WHERE " + " AND ".join(where), args):
-            record = RefRecord.model_validate_json(row[-1])
-            expected = (record.track, record.grade if record.grade is not None else NONE_GRADE, record.id,
-                        record.role, norm(record.area), norm(record.item_type), norm(record.item_format),
-                        norm(record.discourse), norm(record.stem_type), record.year)
-            if row[:-1] != expected:
-                raise ValueError("참고 색인 행의 ID·분류 값과 저장 본문이 다릅니다. 색인을 다시 검토하세요.")
-            _allowed_source(str(Path(record.provenance.file).resolve()))
-            records.append(record)
+            records.append(self._decode_row(row))
         case_families = [r.review_case_evidence.family_id for r in records if r.review_case_evidence]
         if len(case_families) != len(set(case_families)):
             raise ValueError("참고 색인에 중복 검토 사례 family_id가 있습니다")
@@ -445,22 +500,7 @@ class ReferenceIndex:
         target = grams(query.text) if query.text else None
         records.sort(key=lambda r: (-(overlap(target, grams(r.text)) if target else 0), -(r.year or 0), r.id))
         hits = records[:query.k]
-        verified_sources, extracted = {}, {}
-        for record in hits:
-            source = Path(record.provenance.file).resolve()
-            if source not in verified_sources:
-                if not source.is_file():
-                    raise ValueError(f"{record.id}: 현재 출처 파일이 없어 참고 자료를 사용할 수 없습니다")
-                try:
-                    verified_sources[source] = hashlib.sha256(source.read_bytes()).hexdigest()
-                except OSError as exc:
-                    raise ValueError(f"{record.id}: 현재 출처 파일을 확인하지 못해 참고 자료를 사용할 수 없습니다") from exc
-            if verified_sources[source] != record.provenance.sha256:
-                raise ValueError(f"{record.id}: 출처 파일 SHA256이 바뀌어 참고 자료를 사용할 수 없습니다. 재검토 후 새 색인을 만드세요.")
-            try:
-                verify_reference_evidence(record, self.path.parent, verified_sources, extracted)
-            except (ValueError, OSError, KeyError, TypeError) as exc:
-                raise ValueError(f"{record.id}: corpus 증거를 확인하지 못해 참고 자료를 사용할 수 없습니다: {exc}") from exc
+        verified_sources = self._verify_records(hits)
         used = {f: getattr(query, f) for f in FACETS if getattr(query, f) not in (None, "")}
         missing = [] if len(hits) >= query.k else [f"{query.track} {query.role} 사례가 조건 {used}에서 {len(hits)}개뿐입니다(요청 {query.k}). 완화하지 않았습니다."]
         return {"schema_version": SCHEMA_VERSION, "usage": "development", "query": query.model_dump(),

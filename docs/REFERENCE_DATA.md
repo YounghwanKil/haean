@@ -104,7 +104,7 @@ haean tools track attach runs/준비된-run data/track-brief.json \
 
 색인이 생겼다고 모든 출제 요청에 참고 문항이 들어가는 것은 아니다. 검색은 급수·과목·역할과 명시된 유형·영역·응답 형식을 정확히 맞춘다. 원자료에 영역이나 응답 형식이 없으면 해당 조건의 검색 결과는 부족할 수 있다. 자동으로 조건을 풀거나 비슷한 이름을 같은 유형으로 바꾸지 않는다. 필요한 분류는 원문을 읽어 별도로 정제하고 대응 근거를 남긴다.
 
-`ref-search`의 `hits`·`missing`과 실행의 참고자료 스냅샷을 확인한다. 단계형 출제는 PDF뿐 아니라 전사 packet과 선택 행 사본도 실행 근거에 포함한다. 이 색인은 기존 회차 `compose`에 자동 연결되지 않는다. 기존 회차 작성의 corpus 검색과 선택적인 `track attach --index`는 서로 다른 연결이다.
+`ref-search`의 `hits`·`missing`과 실행의 참고자료 스냅샷을 확인한다. 단계형 출제는 PDF뿐 아니라 전사 packet과 선택 행 사본도 실행 근거에 포함한다. 전체 회차는 [회차 입력 연결](EXAM_INPUTS.md#선택한-참고문항을-새-계획에-붙이기)의 `exam-ref-bind`로 선택한 문항을 새 계획에 붙인 뒤 `compose bind`·`exam-build`에 전달할 수 있다. 기존 corpus 검색, 회차의 명시 선택, prepared run의 `track attach --index`는 서로 다른 연결이다.
 
 ## 검증 상태와 위키
 

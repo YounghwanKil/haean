@@ -112,7 +112,7 @@ def test_explicit_permuted_slot_mapping_preserves_opaque_ids(inputs, tmp_path):
     assert result["bindings"][0]["external_slot"] == 40
     assert result["plan"]["sha256"] == adapter._sha(inputs["plan"])
     assert result["design"]["sha256"] == adapter._sha(inputs["design"])
-    assert result["validation"]["unavailable_checks"] == adapter.LIMITS
+    assert result["validation"]["unavailable_checks"] == adapter.LIMITS_V2
     with pytest.raises(FileExistsError):
         packet(inputs, tmp_path)
 
@@ -338,3 +338,114 @@ def test_shared_passage_figures_must_match(inputs, tmp_path, draft):
     assert adapter.validate_bundle(run, expected, candidate) == []
     candidate.items[1].figures[0].series[0].values[0] = 3
     assert any("지문 그림 불일치" in error for error in adapter.validate_bundle(run, expected, candidate))
+
+
+# Explicit delivery is a separate source namespace from the design's raw IDs.
+from test_authoring_sources import material, rewrite_packet
+
+
+def attach_material_to_plan(inputs, material):
+    _, resolution, reference, _ = material
+    reference["source"]["official_answer"] = {"answer": 4, "answer_verified": True,
+                                               "evidence": "합성 전달 검증용 정답 근거"}
+    rewrite_packet(resolution["selected_reference_input"], "references")
+    plan = read(inputs["plan"])
+    plan["slots"][0]["composition_resolution"] = resolution
+    save(inputs["plan"], plan)
+    return resolution
+
+
+def test_v2_supplied_ids_and_answer_reach_writer_editor_only(inputs, material, tmp_path, draft):
+    attach_material_to_plan(inputs, material)
+    template = draft.model_copy(deep=True)
+    template.items[0].source_ids = ["selected-1", "fact-1", "source-1"]
+    run, expected, provider, candidate = completed_bundle(inputs, tmp_path, template)
+    assert adapter.load_packet(expected["packet"]["path"], inputs["plan"])["adapter_version"] == adapter.VERSION
+    assert adapter.validate_bundle(run, expected, candidate) == []
+    calls = {stage: payload for stage, _, payload in provider.calls}
+    for stage in ("generate", "editor"):
+        reference = calls[stage]["exam_assignment"][0]["composition_resolution"]["selected_reference_input"]["references"][0]
+        assert reference["source"]["official_answer"]["answer"] == 4
+    assert "selected_reference_input" not in json.dumps(calls["blind"])
+    assert "official_answer" not in json.dumps(calls["blind"])
+    assert "selected-1" not in json.dumps(calls["blind"])
+    assert adapter.WRITING_CONTRACT_V2 == read(run / "context.json")["composition_context"]["contract"]
+
+
+def test_v1_sealed_packet_and_context_keep_original_contract(inputs, tmp_path, draft):
+    bound = packet(inputs, tmp_path)
+    value = read(bound)
+    value["adapter_version"] = adapter.VERSION_V1
+    value["validation"]["unavailable_checks"] = adapter.LIMITS
+    value["seal_sha256"] = adapter._json_sha({key: item for key, item in value.items() if key != "seal_sha256"})
+    save(bound, value)
+    before = bound.read_bytes()
+    assert adapter.load_packet(bound, inputs["plan"])["adapter_version"] == adapter.VERSION_V1
+    slots = read(inputs["plan"])["slots"][:1]
+    run = prepared(tmp_path / "old-bundle", slots)
+    expected = adapter.attach_bundle(run, plan_path=inputs["plan"], packet_path=bound, slots=slots)
+    assert read(run / "composition.json")["adapter_version"] == adapter.VERSION_V1
+    assert read(run / "context.json")["composition_context"]["contract"] == adapter.WRITING_CONTRACT
+    candidate = run_pipeline(run, Provider(draft), 0, **adapter.pipeline_callbacks(run, expected))
+    assert adapter.validate_bundle(run, expected, candidate) == []
+    assert bound.read_bytes() == before
+
+
+@pytest.mark.parametrize("changed", ["packet", "source"])
+def test_v2_invalid_supplied_evidence_fails_preflight_without_draft(inputs, material, tmp_path, changed):
+    resolution = attach_material_to_plan(inputs, material)
+    bound = packet(inputs, tmp_path)
+    slots = read(inputs["plan"])["slots"][:1]
+    run = prepared(tmp_path / "bundle", slots)
+    expected = adapter.attach_bundle(run, plan_path=inputs["plan"], packet_path=bound, slots=slots)
+    block = resolution["selected_reference_input"]
+    path = block["packet_path"] if changed == "packet" else block["references"][0]["source"]["path"]
+    Path(path).write_bytes(b"changed")
+    with pytest.raises(ValueError, match="SHA-256"):
+        adapter.validate_bundle(run, expected)
+    with pytest.raises(ValueError, match="SHA-256"):
+        adapter.pipeline_callbacks(run, expected)
+
+
+def test_invalid_supplied_packet_blocks_bind_and_build(inputs, material, tmp_path, monkeypatch):
+    from haean.full_exam import build
+    resolution = attach_material_to_plan(inputs, material)
+    Path(resolution["selected_reference_input"]["packet_path"]).write_text("{}")
+    with pytest.raises(ValueError, match="SHA-256"):
+        packet(inputs, tmp_path)
+    assert not (tmp_path / "bound").exists()
+    monkeypatch.setattr("haean.full_exam.CodexProvider", lambda *a, **k: pytest.fail("no model initialization"))
+    with pytest.raises(ValueError, match="SHA-256"):
+        build(inputs["plan"], "unused", tmp_path / "blocked")
+    assert not (tmp_path / "blocked").exists()
+
+
+def test_changed_supplied_source_during_review_fails(inputs, material, tmp_path, draft):
+    resolution = attach_material_to_plan(inputs, material)
+    bound = packet(inputs, tmp_path)
+    slots = read(inputs["plan"])["slots"][:1]
+    run = prepared(tmp_path / "bundle", slots)
+    expected = adapter.attach_bundle(run, plan_path=inputs["plan"], packet_path=bound, slots=slots)
+    def hook(stage):
+        if stage == "editor":
+            Path(resolution["selected_reference_input"]["references"][0]["source"]["path"]).write_bytes(b"changed")
+    with pytest.raises(ValueError, match="SHA-256"):
+        run_pipeline(run, Provider(draft, hook), 0, **adapter.pipeline_callbacks(run, expected))
+    assert read(run / "status.json")["state"] == "failed"
+    assert not (run / "candidate.json").exists()
+
+
+@pytest.mark.parametrize("changed", ["packet", "source"])
+def test_composition_resume_rechecks_supplied_evidence_before_output(inputs, material, tmp_path, draft, monkeypatch, changed):
+    from test_composition_resume import history
+    from haean.exam_resume import resume
+    resolution = attach_material_to_plan(inputs, material)
+    previous = history(inputs, tmp_path, draft, modes={})
+    block = resolution["selected_reference_input"]
+    target = block["packet_path"] if changed == "packet" else block["references"][0]["source"]["path"]
+    Path(target).write_bytes(b"changed")
+    monkeypatch.setattr("haean.composition_resume.CodexProvider", lambda *a, **k: pytest.fail("no model initialization"))
+    out = tmp_path / "next"
+    with pytest.raises(ValueError, match="SHA-256"):
+        resume(previous, "unused", out)
+    assert not out.exists()

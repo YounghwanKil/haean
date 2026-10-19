@@ -24,7 +24,10 @@ scripts/haean-tool feedback RUN --item ITEM-001 --reviewer 팀검토자 --severi
 scripts/haean-tool feedback-note --exam psat7 --subject 자료해석 --reviewer 팀검토자 --file 검토의견.txt
 scripts/haean-tool feedback-notes --exam psat7 --subject 자료해석
 scripts/haean-tool plan --exam psat5 --subject 상황판단 --out runs/plan.json
+scripts/haean-tool exam-ref-bind runs/plan.json --index data/references.sqlite --selection runs/reference-selection.json --out runs/plan-with-references
 ```
+
+`exam-ref-bind`의 선택 파일은 [회차 입력 연결](../../../docs/EXAM_INPUTS.md#선택한-참고문항을-새-계획에-붙이기)을 따른다. 원 계획의 해시와 슬롯 ID에 선택 자료를 연결하고 전체 슬롯의 자료 현황을 보고한다. 문항을 생성하거나 부족한 참고자료를 자동으로 만들어 주는 명령은 아니다.
 
 `RUN`은 prepare가 출력한 경로다. `check`는 풀이 양식을 만들고, 풀이 완료 후 `editor-prepare`가 편집자가 대조할 풀이 사본과 편집 양식을 만든다. CLI `blind`는 이 준비까지 수행한다. 검토자는 읽은 버전의 `candidate.sha256`과 양식의 `input_binding`을 보관하고 `{result, evidence}` 형식으로 결과를 반환한다. `review-result`에는 **검토 당시 값과 결과**를 전달한다. 문항·지침·명세·요청 또는 편집 준비에 묶인 풀이가 다르면 거부된다. 풀이를 교체하거나 편집 준비를 새로 했다면 편집 검토도 다시 한다. 과거 결과에 최신 템플릿을 붙이지 않는다. 외부 검토자의 명시 기록은 검토 진위의 암호학적 보증은 아니다.
 

@@ -10,7 +10,7 @@
 | 배정표의 슬롯 필드 | `context.exam_assignment`와 `request.md`에 전달한다. `authoring_notes` 등에 적은 근거도 포함한다. |
 | 선택 composition | 연결한 형식·내용설계와 대응표를 작성·편집 검토에 전달한다. 독립 풀이에는 전달하지 않는다. |
 | 로컬 지식 위키 | `data/wiki`의 페이지를 자동 주입하지 않는다. `prepare`의 조건부 fallback은 기존 corpus의 `wiki`·`reference` 분류 레코드 검색이다. |
-| 정제 트랙 색인 | `track attach --index`의 선택 입력이다. `exam-build`가 이 색인을 자동 사용하지 않는다. |
+| 정제 트랙 색인 | `exam-ref-bind`가 명시적으로 고른 참고 전문을 새 계획에 연결한다. `exam-build` 자체가 색인을 검색하거나 자료 적합성을 승인하지는 않는다. 별도 prepared run에서는 기존 `track attach --index`를 쓴다. |
 | 누적 생성 DB·공통 텍스트 피드백 | `novelty-memory/get`과 `feedback-notes`로 조회할 수 있다. 전체 회차 작성 입력에는 별도로 연결해야 한다. |
 | 단계별 소재·설계·작성 | `track generate`의 별도 prepared run 경로다. 회차의 `exam_assignment`가 있는 run에 `track attach`를 덧붙일 수 없다. |
 | 한국어 윤문·고정 평가·한글 출력 | `exam-build`의 자동 단계가 아니다. 각각의 실제 수행 여부와 결과를 따로 기록한다. |
@@ -63,9 +63,50 @@
 
 작성 시작 전에 전체 회차의 명시 자료를 검사하며, 파이프라인과 수동 `check`도 같은 ID 계약을 사용한다. 생성 후에는 자료가 바뀌지 않았는지 다시 확인한다. 이는 **전달한 자료와 출처의 연결 검사**다. 사실 요약의 정확성, 전문의 유형 분류, 독창성이나 전문가 승인을 대신하지 않는다. 일반 위키 근거·통계·`authoring_notes`에 적은 ID는 자동 허용하지 않는다.
 
-이 자료는 작성·편집 입력에만 포함한다. 독립 풀이에는 학생용 문항만 보낸다. 선택 `track`·`composition` 어댑터의 별도 출처 이름공간 계약은 그대로 따르며, 이 필드로 그 계약을 우회하지 않는다.
+이 자료는 작성·편집 입력에만 포함한다. 독립 풀이에는 학생용 문항만 보낸다. 새 composition 연결은 검증된 명시 패킷 ID도 허용하지만, 설계 메모의 미확인 외부 ID를 허용하는 것은 아니다. 기존에 봉인한 composition 계약과 별도 `track` 계약은 해당 버전의 범위를 유지한다.
 
 모든 근거를 묶음마다 복제하기보다 해당 슬롯에 필요한 내용만 전달한다. 계획·근거를 확정한 뒤 `compose bind`를 수행한다. 이미 실행한 계획이나 후보의 입력을 소급 교체하지 않는다. 실행 후에는 실제 묶음의 `context.json`, `request.md`와 호출 기록에 내용이 들어갔는지 확인한다. 독립 풀이 입력에는 이 제작 근거·과거 정답·검토를 전달하지 않는다.
+
+### 선택한 참고문항을 새 계획에 붙이기
+
+“이 회차에 참고 기출을 연결해줘”라고 요청하면 해안이 원문을 읽고 슬롯별 선택 파일을 준비한다. `exam-ref-bind`는 선택한 ID를 색인에서 직접 조회해 출처와 기존 검증 근거를 확인하고, 전문 사본과 새 계획을 만든다. 모델을 호출하거나 유형 이름을 임의로 대응시키지 않는다. 기존 계획·색인·원문은 수정하지 않는다.
+
+```json
+{
+  "schema_version": 1,
+  "usage": "development",
+  "plan_sha256": "원 계획 파일 바이트의 SHA256",
+  "slots": [{
+    "slot_id": "원 계획의 실제 stable ID",
+    "reference_ids": ["색인의 실제 참고문항 ID"],
+    "application": "읽은 원문 중 이 슬롯의 선지 범위 설계에 참고할 점",
+    "match_scope": "format_only",
+    "gaps": ["같은 소재·핵심 판단의 직접 예시는 아직 없음"]
+  }]
+}
+```
+
+`application`과 `match_scope`는 선택자가 읽고 판단한 설명이다. `format_only` 같은 값은 선택 범위를 기록하는 표기이며 자동으로 인증한 분류가 아니다. 원래 유형·소재·난도는 바뀌지 않는다. 시험·과목·급수가 맞지 않는 자료는 묵시적으로 대체하지 않는다. 명시적인 빈 `reference_ids`에는 부족한 자료와 그 이유를 적을 수 있다. 선택하지 않은 슬롯도 보고서에 남는다. 이미 명시 자료가 있는 슬롯에 새 선택을 겹쳐 쓰면 충돌을 알려 주며, 이전 선택을 자동 교체하지 않는다.
+
+```bash
+haean tools exam-ref-bind runs/plan.json \
+  --index data/references.sqlite \
+  --selection runs/reference-selection.json \
+  --out runs/plan-with-references
+# 새 계획을 이후 회차 설계 연결·출제에 사용한다.
+haean tools exam-build runs/plan-with-references/plan.json \
+  --out runs/production
+```
+
+출력에는 `source-plan.json`, `selection.json`, `references.json`, `plan.json`, 전체 슬롯의 `coverage.json`과 근거 사본이 있다. 선택 수와 고유 참고문항 수를 구별한다. 자료 연결 완료는 판단 과제의 적합성·정답 타당성·실제 작성자의 활용 확인이 아니며 `generation_executed=false`, `quality_verified=false`로 표시한다. 부족한 슬롯은 자료를 보강하거나 결손을 인지한 상태에서 작성 범위를 결정한다.
+
+기존 선택은 원래 패킷·사본 경로를 계속 참조한다. 이미 연결한 참고를 다른 슬롯에도 쓰는 경우에는 학생용 내용과 출처 근거가 같은지 확인한 뒤 기존 출처 객체를 재사용한다. 새 결과 폴더만으로 모든 이전 자료가 이관되는 것은 아니므로 기존 근거 폴더도 함께 유지한다.
+
+지원 대상은 문항 역할(`role=item`)의 완전한 학생용 전문이다. 기존 PSAT 전사와 명시적인 학생용 JSON을 연결하며, 평문에서 정답·해설을 임의로 분리하거나 native 블록 문항을 자동 평탄화하지 않는다. 검토 사례(`role=case`)는 [별도 사례 연결](REVIEW_CASES.md) 경로를 사용한다. 언어이해의 별도 `reading` 계획에는 이 명령을 적용하지 않는다.
+
+확인된 참고 정답을 전달할 때도 `source.official_answer`의 검증 상태·근거를 함께 보존하며 해설을 새로 지어 넣지 않는다. 전사 당시의 미확인 값과 후속 공식 답 확인을 합쳐 과거 기록을 수정하지 않는다. 명령 실행 시 기존 전사·정답·분류 검증 체인을 확인하고 근거 사본을 남긴다. 후속 출제의 명시 패킷 검사는 패킷·학생용 내용·출처 객체와 원본 파일의 일치를 검사하며, 외부 사이트나 모든 하위 근거를 매번 다시 검증하는 기능으로 보고하지 않는다.
+
+composition을 함께 쓸 때는 **참고문항 연결 → 새 계획으로 `compose bind` → `exam-build --composition-packet`** 순서다. 새 계약에서 검증한 명시 출처 ID는 작성·편집·재개에서 사용 가능하며, 이전 계약의 봉인 자료를 새 버전으로 소급 변경하지 않는다. 독립 풀이에는 참고 정답·전문·제작 의견이 들어가지 않는다.
 
 ## 실행 범위와 후속 단계
 

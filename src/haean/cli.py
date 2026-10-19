@@ -119,6 +119,11 @@ def main():
     p.add_argument("--exam", choices=["leet", "psat5", "psat7", "team"])
     p.add_argument("--subject")
     p.add_argument("--limit", type=int, default=12)
+    p = sub.add_parser("exam-ref-bind", help="선택한 정제 참고 전문을 새 회차 계획에 연결; 모델 호출 없음")
+    p.add_argument("plan", type=Path)
+    p.add_argument("--index", type=Path, required=True)
+    p.add_argument("--selection", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
     p = sub.add_parser("exam-build", help="배정표로 모의고사 전체 출제·독립 검토")
     p.add_argument("plan", type=Path)
     p.add_argument("--composition-packet", type=Path, help="compose bind로 검증한 선택 회차 설계 패킷")
@@ -282,6 +287,12 @@ def dispatch(a):
     if a.command == 'exam-resume':
         from .exam_resume import resume
         return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement)
+    if a.command == 'exam-ref-bind':
+        from .exam_references import bind_exam_references
+        plan = bind_exam_references(a.plan, a.index, a.selection, a.out)
+        return {"plan": str(plan), "coverage": str(plan.parent / "coverage.json"),
+                "references": str(plan.parent / "references.json"),
+                "generation_executed": False, "quality_verified": False}
     if a.command == 'import-questions':
         from .question_sources import import_questions
         return import_questions(Corpus(a.db), a.packet)

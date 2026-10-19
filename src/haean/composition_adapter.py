@@ -16,7 +16,8 @@ from .models import Draft
 from .composition.profiles import slot_count
 
 
-VERSION = "haean-full-exam-composition-v1"
+VERSION_V1 = "haean-full-exam-composition-v1"
+VERSION = "haean-full-exam-composition-v2"
 TRACKS = {"추리논증": "leet_reasoning", "언어논리": "psat_verbal",
           "자료해석": "psat_data", "상황판단": "psat_situation"}
 LIMITS = [
@@ -41,6 +42,28 @@ source_ids에는 prepare가 제공한 context.references의 ID만 쓴다. 실제
 공통지문 두 문항은 passage·tables·지문 그림을 공유하고 각자의 기존 유형을 유지한다.
 형식·내용의 의미상 부합, 정답 조건, 오답 함정, 독창성은 편집 검토가 따로 판단한다.
 독립 검토·전문가 확인·HWP 렌더가 실제 수행되었다고 꾸미지 않는다."""
+
+
+# Frozen v1 constants above remain the exact sealed contract for old packets.
+LIMITS_V2 = [LIMITS[0],
+    "외부 설계의 참고 ID는 확인하지 않았습니다. legacy source_ids에는 context.references와 검증된 명시적 supplied source ID만 사용할 수 있습니다.",
+    *LIMITS[2:]]
+WRITING_CONTRACT_V2 = WRITING_CONTRACT.replace(
+    "source_ids에는 prepare가 제공한 context.references의 ID만 쓴다. 실제 내용 출처는 정식 corpus 조회 근거를 따른다.",
+    "source_ids에는 context.references와 exam_assignment.composition_resolution의 검증된 selected_reference_input·topic_fact_input ID만 쓴다. "
+    "명시적 참고의 student·source·application·match_scope·gaps와 정답 검증 상태를 함께 확인한다. "
+    "공식 정답은 해당 원문 참고의 답이며 새 문항의 답을 강요하지 않는다. 선택되지 않은 외부 설계 ID를 출처로 쓰지 않는다.").replace(
+    "외부 원형·참고 ID는 형식·설계 비교용 별도 이름공간이다. 그 사실·수치·문장을 내용 근거로 쓰지 않는다.",
+    "external_format·external_content에만 등장하는 미검증 원형·참고 ID는 형식·설계 비교용이다. "
+    "이 미검증 ID의 사실·수치·문장을 내용 근거로 쓰지 않는다.")
+
+
+def _limits(version):
+    return LIMITS if version == VERSION_V1 else LIMITS_V2
+
+
+def _writing_contract(version):
+    return WRITING_CONTRACT if version == VERSION_V1 else WRITING_CONTRACT_V2
 
 
 def _read(path):
@@ -221,12 +244,14 @@ def bind(plan_path, design_path, mapping_path, out: Path) -> Path:
     plan, design, mapping = load_plan(plan_path), _load_design(design_path), _read(mapping_path)
     rows = mapping.get("bindings") if isinstance(mapping, dict) else mapping
     bindings = _validate_assignment(plan, design, rows)
+    from .authoring_sources import supplied_source_ids
+    supplied_source_ids({"references": [], "exam_assignment": plan["slots"]})
     packet = {"schema_version": 1, "adapter_version": VERSION, **before,
               **{key: design[key] for key in ("exam", "subject", "track", "exam_grade", "format_design",
                                              "content_spec", "profile", "execution_snapshot")},
               "bindings": bindings, "validation": {"errors": [],
                   "warnings": design.get("validation", {}).get("warnings", []),
-                  "unavailable_checks": [*design.get("validation", {}).get("unavailable_checks", []), *LIMITS]},
+                  "unavailable_checks": [*design.get("validation", {}).get("unavailable_checks", []), *_limits(VERSION)]},
               "human_approved": False, "quality_verified": False}
     for label, ref in before.items():
         _verify_ref(ref, label)
@@ -248,7 +273,7 @@ def load_packet(packet_path, plan_path, *, verify_runtime=True):
         raise ValueError("verify_runtime은 bool이어야 합니다")
     from .full_exam import load_plan
     packet = _read(packet_path)
-    if (not isinstance(packet, dict) or packet.get("schema_version") != 1 or packet.get("adapter_version") != VERSION
+    if (not isinstance(packet, dict) or packet.get("schema_version") != 1 or packet.get("adapter_version") not in {VERSION_V1, VERSION}
             or packet.get("seal_sha256") != _json_sha({k: v for k, v in packet.items() if k != "seal_sha256"})):
         raise ValueError("composition packet seal·버전 불일치")
     for key in ("plan", "design", "mapping"):
@@ -267,7 +292,7 @@ def load_packet(packet_path, plan_path, *, verify_runtime=True):
         if packet.get(key) != design[key]:
             raise ValueError("composition packet 설계·프로필 불일치: " + key)
     if packet.get("validation") != {"errors": [], "warnings": design.get("validation", {}).get("warnings", []),
-            "unavailable_checks": [*design.get("validation", {}).get("unavailable_checks", []), *LIMITS]}:
+            "unavailable_checks": [*design.get("validation", {}).get("unavailable_checks", []), *_limits(packet["adapter_version"])]}:
         raise ValueError("composition packet 검증 범위·경고 불일치")
     if packet.get("human_approved") is not False or packet.get("quality_verified") is not False:
         raise ValueError("composition packet은 승인·품질 검증을 부여하지 않습니다")
@@ -279,7 +304,7 @@ def _bundle_context(packet, slots):
     formats = {row["slot"]: row for row in packet["format_design"]["slots"]}
     contents = {row["slot"]: row for row in packet["content_spec"]["슬롯"]}
     rows = [by_id[slot["id"]] for slot in slots]
-    return {"contract": WRITING_CONTRACT, "track": packet["track"], "exam_grade": packet["exam_grade"],
+    return {"contract": _writing_contract(packet["adapter_version"]), "track": packet["track"], "exam_grade": packet["exam_grade"],
             "assignments": [{"binding": row, "external_format": formats[row["external_slot"]],
                              "external_content": contents[row["external_slot"]]} for row in rows],
             "format_meta": packet["format_design"].get("meta", {}),
@@ -302,8 +327,10 @@ def attach_bundle(run, *, plan_path, packet_path, slots):
     by_id = {row["id"]: row for row in plan["slots"]}
     if not slots or any(by_id.get(row["id"]) != row for row in slots):
         raise ValueError("composition 묶음이 원 배정표와 다릅니다")
+    from .authoring_sources import supplied_source_ids
+    supplied_source_ids(context)
     content = _bundle_context(packet, slots)
-    sidecar = {"schema_version": 1, "adapter_version": VERSION, "packet": _file_ref(packet_path),
+    sidecar = {"schema_version": 1, "adapter_version": packet["adapter_version"], "packet": _file_ref(packet_path),
                "plan": _file_ref(plan_path), "assignment": slots,
                "base_context_sha256": _json_sha(context), "composition_context": content}
     _write_new(run / "composition.json", sidecar)
@@ -343,6 +370,8 @@ def validate_bundle(run, expected, draft=None, *, verify_runtime=True):
             raise ValueError("composition 다른 묶음의 입력 참조")
         _verify_ref(ref, name)
     packet = load_packet(expected["packet"]["path"], expected["plan"]["path"], verify_runtime=verify_runtime)
+    if sidecar.get("adapter_version") != packet["adapter_version"]:
+        raise ValueError("composition sidecar·packet 버전 불일치")
     context = _read(run / "context.json")
     slots = sidecar["assignment"]
     by_id = {row["id"]: row for row in _read(expected["plan"]["path"])["slots"]}
@@ -353,6 +382,9 @@ def validate_bundle(run, expected, draft=None, *, verify_runtime=True):
             or context.get("composition_context") != sidecar["composition_context"]
             or sidecar["composition_context"] != _bundle_context(packet, slots)):
         raise ValueError("composition 배정·context·sidecar 설계 불일치")
+    from .authoring_sources import supplied_source_ids
+    supplied = supplied_source_ids(context)
+    allowed = supplied if packet["adapter_version"] == VERSION else {ref["id"] for ref in context["references"]}
     if draft is None:
         return []
     errors = []
@@ -360,7 +392,6 @@ def validate_bundle(run, expected, draft=None, *, verify_runtime=True):
         errors.append("composition 배정 문항 ID·순서 불일치")
     from .full_exam import check_slot
     items = {item.id: item for item in draft.items}
-    allowed = {ref["id"] for ref in context["references"]}
     for slot in slots:
         if slot["id"] not in items:
             continue
