@@ -64,11 +64,14 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
     if ('composition' in production or any('composition' in job or
             (Path(job['run']) / 'composition.json').exists() or
             (Path(job['run']) / 'composition-binding.json').exists() for job in production['jobs'])):
-        raise ValueError('composition 회차 재개는 아직 지원하지 않습니다. 기존 sidecar·검토 binding을 보존하고 새 exam-build를 사용하세요')
+        from .composition_resume import resume_composition
+        return resume_composition(previous, db, out, workers=workers, max_revisions=max_revisions,
+                                  model=model, replacements=replacements)
     for replacement in replacements:
         replacement_production = read(replacement)
         if ('composition' in replacement_production or any('composition' in job or
-                (Path(job['run']) / 'composition.json').exists() for job in replacement_production['jobs'])):
+                (Path(job['run']) / 'composition.json').exists() or
+                (Path(job['run']) / 'composition-binding.json').exists() for job in replacement_production['jobs'])):
             raise ValueError('composition 묶음은 기존 회차 재개의 대체 묶음으로 사용할 수 없습니다')
     plan = load_plan(previous / 'plan.json')
     selected = select_jobs(previous, replacements)

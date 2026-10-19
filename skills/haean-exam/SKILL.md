@@ -13,6 +13,8 @@ LEET 추리논증은 `src/haean/prompts/leet_editorial.md`의 회차 기준을 �
 
 외부 회차 규칙을 활용할 때는 `docs/COMPOSITION.md`를 읽는다. `compose design`으로 형식·내용설계 제안을 만든 뒤 `compose bind`로 기존 plan의 stable ID·유형·난도·공통지문과 명시 대응한다. 연결 패킷을 `exam-build --composition-packet`에 전달하며 원래 배정표를 덮어쓰지 않는다. 현재 이 선택 경로는 추리논증 40문항과 PSAT 5급 과목당 40문항이다. PSAT 7급·언어이해는 기존 경로를 유지한다. 설계에 있는 원천 메모의 빈칸·기출 ID는 검증된 참고 전문이 아니며, 외부 익명화·원형 변형 지시는 정확성·독창성 계약보다 우선하지 않는다.
 
+중단된 회차는 `docs/PRODUCTION.md`의 `exam-resume`를 사용해 새 경로에서 이어간다. composition 회차도 지원하지만 원 설계·코드·출처·묶음·검토 연결을 먼저 확인한다. 완료 묶음은 재사용하고 미완료 묶음만 이어가며, stale 해시를 다시 봉인하거나 누락된 검토를 완료로 만들지 않는다. composition의 `--replacement`와 불완전한 production manifest는 지원하지 않는다.
+
 대량 출제는 독립 문항 묶음을 writer 역할에 나눠 최대 3개씩 병렬로 진행한다. 공유 지문 2문항은 한 출제자가 함께 설계한다. 각 묶음은 독립 검토를 통과한 뒤 회차에 편입한다.
 
 유형 합계 외에도 다음을 검토한다.

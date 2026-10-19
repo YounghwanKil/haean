@@ -220,12 +220,12 @@ def test_declared_sidecar_cannot_be_missing(inputs, tmp_path, draft):
     assert adapter.assembly_errors(run, None, candidate, read(run / "status.json"))
 
 
-def test_composition_resume_is_explicitly_rejected_without_output(tmp_path):
+def test_incomplete_composition_resume_is_rejected_without_output(tmp_path):
     from haean.exam_resume import resume
     previous = tmp_path / "previous"
     previous.mkdir()
     save(previous / "production.json", {"composition": {}, "jobs": []})
-    with pytest.raises(ValueError, match="재개는 아직 지원하지"):
+    with pytest.raises(ValueError, match="회차 선언"):
         resume(previous, tmp_path / "db.sqlite", tmp_path / "next")
     assert not (tmp_path / "next").exists()
 
