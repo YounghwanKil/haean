@@ -1,6 +1,6 @@
 # 선택 원문쌍 구조 검토
 
-`novelty-review`는 이미 저장된 후보 1–4문항 묶음과 누적 이력에서 선택한 원문쌍을
+`novelty-review`는 이미 저장된 후보 1–4문항 묶음 또는 언어이해 한 지문×3문항과 누적 이력에서 선택한 원문쌍을
 새 Codex CLI 세션 한 번에 전달한다. ChatGPT 구독의 기존 `CodexProvider`를 사용하며
 기본 요청 모델은 `gpt-6-astra`다. API 키 설정을 만들지 않는다.
 
@@ -10,11 +10,13 @@ scripts/haean-tool novelty-review runs/example \
   --neighbors 1 --history data/generated.sqlite --model gpt-6-astra
 ```
 
-입력 RUN에 `candidate.json`, `brief.json`이 필요하고 `context.json`은 있으면 해시를 고정한다.
+일반 입력 RUN에 `candidate.json`, `brief.json`이 필요하고 `context.json`은 있으면 해시를 고정한다.
 모델에는 context 전체 대신 exam_assignment의 명세 필드와 exam_contract만 전달한다.
 기존 feedback·review·targeted_repair와 composition_resolution은 전달하지 않는다.
 전체 회차의 `assembled.json` 폴더는 받지 않는다. 출력은 원 RUN 밖의 새 경로여야 한다.
 이미 존재하는 폴더는 재사용하지 않는다. 실패한 실행도 같은 경로에서 덮어쓰지 않는다.
+
+언어이해는 [별도 원문 어댑터](READING_NOVELTY.md)로 `book.json`, book 폴더, `reading` 제작 run 또는 attempt를 읽는다. 지문이 여럿이면 `--passage-id`로 하나를 고른다. `Brief`/`Item`으로 변환하지 않고 공통지문·세 문항 전문과 선택 문항 위치를 보존한다. 원고의 정답은 선택 문항에서 읽으며 그 문항의 네 오답 역할을 검증한다. 지문 단위 제작 입력의 계획·시도 결속도 확인한다.
 
 ## 선택과 버전
 
@@ -46,6 +48,7 @@ before raw SHA, 입력·프롬프트 SHA, 선택 이유, 크기, 모델 요청�
 catalog digest와 canonical payload SHA는 직렬화 방식이 다르므로 별도 필드로 둔다.
 `resolve_source`의 실제 파일 일치·보관본 일치·미해소·복수 일치·불완전 상태를 그대로 남긴다.
 미해소일 때는 저장 payload 비교이며 원본 파일 확인이라고 하지 않는다.
+언어이해의 출처는 book 원바이트 SHA와 지문·문항 위치로 대조하며 일반 run의 `revision-*` 경로를 추정하지 않는다. 출처가 다른 버전을 같은 ID의 새 문항으로 세지 않는다.
 `retrieval.json`, `unselected-history.json`에는 검색 결과와 미선택 저장 버전을 남긴다.
 같은 묶음 내부 쌍은 이번 명령의 모델 비교 대상이 아니다.
 

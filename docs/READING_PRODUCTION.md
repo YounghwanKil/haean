@@ -42,6 +42,8 @@ haean tools reading check runs/reading-next --passage READ-P01 --draft runs/read
 
 등록할 때마다 새 시도 폴더를 만들고 이전 원고와 검토는 보존한다. `check` 결과와 `status`에 표시된 현행 경로를 사용한다. 새 파일을 이전 시도 폴더에 직접 덮어쓰지 않는다.
 
+계획 전에는 누적 생성 이력에서 소재·추론·오답 설계를 확인한다. 작성 후 [언어이해 반복 검사](READING_NOVELTY.md)로 현재 지문을 과거 문항과 대조하고, 필요한 원문쌍 검토를 별도로 수행한다. 검토한 원고는 `novelty-index`로 명시 등록한다. `reading check`나 `assemble`이 누적 DB를 자동 갱신하거나 독창성을 승인하지는 않는다.
+
 ## 독립 풀이와 편집 검토
 
 1. 새 컨텍스트 풀이자에게 현행 `student.json`과 `blind-request`의 공개 입력·지침·응답 스키마/양식만 전달한다. 지문·발문·보기·선지 외의 출제 계획, 정답·해설, 이전 검토, 부모 대화를 주지 않는다.

@@ -181,8 +181,9 @@ def main():
     p.add_argument("--packet", type=Path)
     p.add_argument("--query")
     for command in ('novelty-index', 'novelty-check'):
-        p = sub.add_parser(command, help='누적 생성물 기록·재사용 후보 대조; 의미상 독창성 판정 아님')
-        p.add_argument('runs', nargs='+', type=Path)
+        p = sub.add_parser(command, help='누적 생성물·언어이해 book 기록 및 재사용 후보 대조; 독창성 판정 아님')
+        p.add_argument('runs', nargs='+', type=Path, help='표준 run·production 또는 언어이해 book.json·production·attempt')
+        p.add_argument('--passage-id', help='언어이해 입력에서 지문 하나만 선택; 생략하면 전체 입력')
         p.add_argument('--catalog', type=Path, default=Path('data/generated.sqlite'))
         if command == 'novelty-check':
             p.add_argument('--out', type=Path, required=True)
@@ -199,7 +200,8 @@ def main():
             p.add_argument('--item', action='append', required=True)
             p.add_argument('--all-versions', action='store_true')
     p = sub.add_parser('novelty-review', help='선택 원문쌍을 별도 Codex 1회로 검토; 현행 승인·상태 변경 없음')
-    p.add_argument('run', type=Path, help='candidate.json을 가진 1–4문항 묶음 run')
+    p.add_argument('run', type=Path, help='1–4문항 run 또는 언어이해 book.json·production·attempt (한 지문×3문항)')
+    p.add_argument('--passage-id', help='언어이해 다지문 입력에서 검토할 지문 ID; 한 세트 입력은 생략 가능')
     p.add_argument('--out', required=True, type=Path, help='원 run 밖의 새 출력 폴더')
     p.add_argument('--neighbors', type=int, default=1)
     p.add_argument('--history', type=Path, default=Path('data/generated.sqlite'))
@@ -244,7 +246,8 @@ def dispatch(a):
         return verify(a.input, a.out)
     if a.command == 'novelty-review':
         from .novelty_review import novelty_review
-        return novelty_review(a.run, a.out, neighbors=a.neighbors, history=a.history, model=a.model)
+        return novelty_review(a.run, a.out, neighbors=a.neighbors, history=a.history, model=a.model,
+                              passage_id=a.passage_id)
     if a.command in {'novelty-memory', 'novelty-get'}:
         from . import novelty
         if a.command == 'novelty-memory':
@@ -256,7 +259,7 @@ def dispatch(a):
         return result
     if a.command in {'novelty-index', 'novelty-check'}:
         from . import novelty
-        rows = novelty.records(a.runs)
+        rows = novelty.records(a.runs, passage_id=a.passage_id)
         if a.command == 'novelty-index':
             return novelty.remember(a.catalog, rows)
         previous = novelty.history(a.catalog)

@@ -42,6 +42,8 @@ Python 의존성이 없으면 저장소 루트에서 `./haean setup`을 실행�
 
 `novelty-index RUN_OR_PRODUCTION ...`은 명시한 생성물을 로컬 `data/generated.sqlite`에 기록한다. 같은 시험·과목·문항 ID는 수정 계보로 취급하고 버전 해시를 보관한다. 새 문항에는 새 ID를 사용한다. 평가용 봉인 자료나 실험 폴더를 통째로 색인하지 않는다.
 
+언어이해는 별도 원문 형식을 유지하면서 같은 명령을 사용한다. [언어이해 반복 검사](../../../docs/READING_NOVELTY.md)의 book·제작 run·attempt 입력, 지문 선택, 버전 한정 ID를 확인한다. 조회 과목은 `--exam leet --subject 언어이해`다. 지문과 세 문항을 함께 읽으며 기존 `Brief`/`Item`으로 변환하지 않는다.
+
 ### 과거 문항의 원문 연결
 
 `novelty-memory --exam leet --subject 추리논증 --limit 40`으로 읽을 후보를 고르고, `novelty-get --exam leet --subject 추리논증 --item ITEM-ID --all-versions`로 지정한 문항의 저장 버전을 조회한다. 카드만 읽은 경우 전체 원문을 읽었다고 기록하지 않는다. 과거 실패와 수정 경위를 판단할 때는 현재 버전만으로 대신하지 않는다.

@@ -47,13 +47,54 @@ def _inspect(path, item):
     return result
 
 
-def resolve_source(source, item):
+def _resolve_reading(source, item, capture=None):
+    """Verify exact book bytes and original locator, never guess old versions."""
+    from . import reading_novelty
+    result = {'version': 1, 'origin_path': source,
+              'payload_canonical_sha256': hashlib.sha256(canonical(item).encode()).hexdigest(),
+              'identity_method': 'reading book raw SHA256, full native payload and original JSON pointer',
+              'archive_scope': None, 'archive_checks': [], 'matches': [], 'archive_scan_complete': False,
+              'status': 'unresolved'}
+    check = {'path': source, 'status': 'error', 'matches': []}
+    result['origin_check'] = check
+    try:
+        reading_novelty.validate_item(item)
+        path = Path(source)
+        if not path.is_absolute() or source != item['provenance']['source']:
+            raise ValueError('reading source differs from retained absolute provenance')
+        if capture is not None:
+            capture(path)
+        raw = path.read_bytes()
+        check['raw_sha256'] = hashlib.sha256(raw).hexdigest()
+        if check['raw_sha256'] != item['provenance']['book_sha256']:
+            check.update(status='mismatch', error='recorded book SHA256 differs from current source bytes')
+            return result
+        matches = [row for row in reading_novelty.records(path, capture=capture)
+                   if canonical(row['item']) == canonical(item)]
+        check['status'] = 'match' if matches else 'mismatch'
+        check['matches'] = [{'path': source, 'raw_sha256': check['raw_sha256'],
+                             'locator': item['provenance']['question_locator'],
+                             'passage_locator': item['provenance']['passage_locator']} for _ in matches]
+        result['matches'] = list(check['matches'])
+        if matches:
+            result['status'] = 'verified_origin' if len(matches) == 1 else 'ambiguous'
+    except FileNotFoundError as exc:
+        check.update(status='missing', error=str(exc))
+    except (OSError, ValueError, UnicodeError, RecursionError, KeyError, TypeError) as exc:
+        check.update(status='error', error=f'{type(exc).__name__}: {exc}')
+    return result
+
+
+def resolve_source(source, item, *, capture=None):
     """Preserve recorded origin; disclose matches and every bounded probe failure.
 
     Only absolute candidate.json origins enable archive lookup. Symlink entries
     are reported but never followed during archive lookup. The recorded origin
     itself remains an explicit caller-supplied source, not a discovered path.
     """
+    from .reading_novelty import is_reading
+    if is_reading(item):
+        return _resolve_reading(source, item, capture)
     path = Path(source)
     result = {'version': 1, 'origin_path': source,
               'payload_canonical_sha256': hashlib.sha256(canonical(item).encode()).hexdigest(),

@@ -33,6 +33,10 @@ description: LEET 언어이해 지문·문항을 파일럿으로 작성하고 �
 
 ## 현재 회차 연결
 
+계획 전 `novelty-memory --exam leet --subject 언어이해`로 누적 이력을 확인하고, 관련 문항은 `novelty-get`으로 지문과 세 문항 전체를 읽는다. [언어이해 반복 검사](../../docs/READING_NOVELTY.md)에 따라 명시한 기존 book·제작 run을 등록하고, 작성 후 `novelty-check`로 대조한다. 필요하면 `novelty-review --passage-id 지문ID`로 한 지문의 선택 원문쌍을 새 세션에 검토시킨다. 지문 문구뿐 아니라 질문별 결정적 추론과 오답 역할을 비교한다. 이 자료는 블라인드 풀이자에게 전달하지 않는다. 반복 검사를 실행했다는 사실과 반복이 해소됐다는 판단을 구분한다.
+
+새 제작물의 문항 ID는 수정해도 유지하고 새 문항에는 새 ID를 쓴다. 원래 문항 ID가 없는 옛 book의 자동 식별자는 해당 book 버전에만 한정된다. 숫자나 파일명만으로 새·옛 문항의 수정 계보를 추정하지 않는다. 저장소 설치만으로 팀의 과거 문항이 누적 DB에 들어오지는 않는다.
+
 새 회차는 `reading prepare`로 지문·문항 ID를 고정하고 한 출제자에게 1지문×3문항씩 배정한다. 총괄이 `reading check`로 등록하고 준비된 공개 패킷만 새 컨텍스트 풀이자에게 준다. 풀이 이후 `reading editor-prepare`가 고정한 사본과 응답 양식으로 편집을 위임한다. `reading review-result`로 연결을 확인하고, 모든 지문이 준비되면 `reading assemble`로 book을 만든다. 명령은 모델을 자동 호출하지 않으므로 총괄이 실제 위임을 수행해야 한다. 중단된 작업은 `reading status`가 보여 주는 현행 버전·남은 단계부터 이어간다.
 
 경로 없이 “언어이해 이어서”라고 하면 현재 대화·`handoff.md`의 생산 run을 우선한다. 없으면 프로젝트의 `runs/leet-reading/` 안에서 `plan.json`과 `manifest.json`이 함께 있는 미조립 run을 찾고 `reading status`로 확인한다. 후보가 여럿이면 회차명·진행 상태를 제시해 필요한 선택만 묻는다. 최신 파일이라는 이유만으로 임의 선택하거나 이미 등록된 과거 book을 재작성하지 않는다. 중단 시 `RUN/handoff.md`에 생산 run의 절대경로와 남은 지문·검토 단계를 남긴다. `current-exams.json`은 조립된 book의 위치이며 미조립 run 전체를 추적하지 않는다.

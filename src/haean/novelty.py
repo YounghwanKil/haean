@@ -8,17 +8,28 @@ import unicodedata
 from datetime import datetime, timezone
 from .models import Draft
 from .source_resolution import resolve_source
+from . import reading_novelty
 
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def records(paths):
+def records(paths, passage_id=None):
     """Explicit production/run inputs only: never crawl held-out evals or experiments."""
     seen = {}
     for raw in paths:
         path = Path(raw).resolve()
+        reading = reading_novelty.maybe_records(path, passage_id=passage_id)
+        if reading is not None:
+            for row in reading:
+                key = (row['exam'], row['subject'], row['item']['id'])
+                if key in seen and seen[key]['sha256'] != row['sha256']:
+                    raise ValueError(f'Conflicting versions in one import: {key}')
+                seen[key] = row
+            continue
+        if passage_id is not None:
+            raise ValueError('passage_id selection requires a reading book or production run')
         assembled = path / 'assembled.json'
         if assembled.exists():
             children = json.loads(assembled.read_text())['item_runs']
@@ -51,6 +62,13 @@ def connect(path):
 
 
 def remember(path, rows):
+    # Validate before opening a write transaction: malformed native records must
+    # not partially index a batch, and must not masquerade as another subject.
+    for row in rows:
+        if reading_novelty.is_reading(row['item']):
+            reading_novelty.validate_item(row['item'])
+            if (row['exam'], row['subject']) != ('leet', '언어이해') or row['sha256'] != digest(row['item']) or row['source'] != row['item']['provenance']['source']:
+                raise ValueError('reading novelty row identity/hash/source mismatch')
     with connect(path) as db:
         for row in rows:
             identity = (row['exam'], row['subject'], row['item']['id'])
@@ -84,6 +102,19 @@ def memory_index(path, exam, subject, offset=0, limit=40):
     entries = []
     for payload, sha, source in rows[offset:offset+limit]:
         item = json.loads(payload)
+        if reading_novelty.is_reading(item):
+            reading_novelty.validate_item(item)
+            q = reading_novelty.question(item)
+            entries.append({'id': item['id'], 'sha256': sha, 'source': source,
+                            'source_resolution': {'origin_path': source, 'status': 'not_checked'},
+                            'source_format': reading_novelty.FORMAT, 'identity_scope': item['identity_scope'],
+                            'content_sha256': item['content_sha256'],
+                            'passage_id': item['passage'].get('id'), 'title': item['passage'].get('title'),
+                            'domain': item['passage'].get('domain'), 'number': q['number'],
+                            'cognitive_task': q.get('cognitive_task'), 'difficulty': q.get('difficulty'),
+                            'passage_locator': item['provenance']['passage_locator'],
+                            'question_locator': item['provenance']['question_locator']})
+            continue
         entries.append({'id': item['id'], 'sha256': sha, 'source': source,
                         'source_resolution': {'origin_path': source, 'status': 'not_checked'},
                         **{key: item.get(key) for key in
@@ -142,6 +173,14 @@ def shingles(text):
 
 
 def features(item):
+    if reading_novelty.is_reading(item):
+        reading_novelty.validate_item(item)
+        q = reading_novelty.question(item)
+        return {'passage': shingles(' '.join(item['passage']['paragraphs'])),
+                'reasoning': shingles(' '.join([q.get('cognitive_task', ''), q['stem'], q.get('box', ''),
+                                              q['explanation'], *q['option_explanations'],
+                                              q.get('strongest_counterreading', '')])),
+                'options': shingles(' '.join(q['options'])), 'data': set()}
     return {
         'passage': shingles(item['passage']),
         'reasoning': shingles(' '.join([item['cognitive_task'], *item['essential_conditions'], item['explanation']])),
@@ -162,7 +201,9 @@ def audit(candidates, previous, limit=5):
                 continue
             if (row['exam'], item['id']) == (other['exam'], other['item']['id']):
                 continue
-            paired = bool(item.get('shared_passage_id')) and row['exam'] == other['exam'] and item['shared_passage_id'] == other['item'].get('shared_passage_id') and item['passage'] == other['item']['passage']
+            paired = row['exam'] == other['exam'] and (
+                reading_novelty.shared_pair(item, other['item'])
+                or (bool(item.get('shared_passage_id')) and item['shared_passage_id'] == other['item'].get('shared_passage_id') and item['passage'] == other['item']['passage']))
             scores = {key: round(2*len(value & old[key])/(len(value)+len(old[key])), 4) if value and old[key] else 0.0 for key, value in current.items()}
             if paired:
                 scores['passage'] = 0.0; scores['data'] = 0.0
