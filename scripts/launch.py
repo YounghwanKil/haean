@@ -111,6 +111,8 @@ def help_text():
   haean track-exam RUN   status에 표시할 현재 회차 지정
   haean setup-figures     도식·그래프 검토 도구 설치
   haean setup-layout     한글 양식 도구 설치
+  haean setup-typeset    선택 HWPX 조판 코드 설치 (양식은 별도)
+  haean typeset --help   외부 양식으로 HWPX 조판하기
   haean "작업 요청"      Astra와 해안 작업 시작
   haean --madmax "요청"  이번 실행만 승인·샌드박스 생략
 
@@ -410,7 +412,27 @@ def main():
         if not python.exists(): raise ValueError("먼저 ./haean setup 을 실행하세요")
         subprocess.run([str(python), "-m", "pip", "install", "-e", ".[layout]"], cwd=ROOT, check=True)
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup_layout.py")], check=True).returncode
-    if args in (["doctor"], ["doctor", "--check"]): return doctor(strict="--check" in args)
+    if args == ["setup-typeset"]:
+        python = ROOT / ".venv/bin/python"
+        if not python.exists(): raise ValueError("먼저 haean setup 을 실행하세요")
+        subprocess.run([str(python), "-m", "pip", "install", "-e", str(ROOT / "typeset")], check=True)
+        print("HWPX 조판 코드 설치 완료. 문제·해설 양식은 --template / --solution-template 으로 지정하세요.")
+        return 0
+    if args and args[0] == "typeset":
+        python = ROOT / ".venv/bin/python"
+        if not python.exists(): raise ValueError("먼저 haean setup 과 haean setup-typeset 을 실행하세요")
+        return subprocess.run([str(python), "-m", "haean_typeset", *args[1:]]).returncode
+    if args and args[0] == "doctor":
+        if any(flag in {"-h", "--help"} for flag in args[1:]):
+            print("""사용법: haean doctor [--check]
+
+설치·로그인·스킬 연결 상태를 JSON으로 진단합니다.
+  --check      필수 준비가 부족하면 종료 코드 1을 반환합니다.
+  -h, --help   이 도움말을 표시합니다. 진단이나 Codex 세션을 실행하지 않습니다.""")
+            return 0
+        if args not in (["doctor"], ["doctor", "--check"]):
+            raise ValueError("사용법: haean doctor [--check] (도움말: haean doctor --help)")
+        return doctor(strict="--check" in args)
     if args == ["status"]: return status()
     if args and args[0] == "skills":
         if len(args) > 2: raise ValueError("사용법: haean skills [스킬명]")

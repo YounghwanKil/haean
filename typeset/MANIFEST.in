@@ -1,0 +1,3 @@
+global-exclude *.hwp *.hwpx *.pdf *.png *.ttf *.otf *.xlsx *.sqlite* *.jsonl
+prune haean_typeset/profiles/*/samples
+prune tests/golden

@@ -1,0 +1,272 @@
+"""Versioned development-only reference index for the track foundation.
+
+This is a fresh, dedicated schema, not an adapter for corpus.sqlite or the
+upstream (track, id) index. Opening for search never creates or migrates a DB.
+Raw source content stays local; each record keeps an explicit source locator.
+"""
+from __future__ import annotations
+
+import hashlib
+import sqlite3
+from collections import Counter
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, model_validator
+
+from ...models import StrictModel
+from .. import NAMES
+
+SCHEMA_VERSION = "haean-track-references-v1"
+FACETS = ("area", "item_type", "item_format", "discourse", "stem_type", "grade")
+NONE_GRADE = -1
+
+
+def _allowed_source(value: str) -> None:
+    if "holdout" in value.casefold():
+        raise ValueError("holdout 자료는 development 참고 색인에 넣을 수 없습니다")
+
+
+class ReferenceProvenance(StrictModel):
+    file: str = Field(min_length=1)
+    locator: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    usage: Literal["development"]
+
+    @model_validator(mode="after")
+    def development_only(self):
+        for value in (self.file, self.locator):
+            if not value.strip():
+                raise ValueError("출처 파일·locator는 비울 수 없습니다")
+            _allowed_source(value)
+        return self
+
+
+def _identity(track, grade):
+    if track not in NAMES:
+        raise ValueError("알 수 없는 트랙: " + track)
+    if track.startswith("psat_") and grade not in (5, 7):
+        raise ValueError("PSAT 참고 자료와 검색에는 5급 또는 7급을 명시해야 합니다")
+    if not track.startswith("psat_") and grade is not None:
+        raise ValueError("LEET 참고 자료와 검색에는 급수를 쓰지 않습니다")
+
+
+class RefRecord(StrictModel):
+    id: str = Field(min_length=1)
+    track: str = Field(min_length=1)
+    role: Literal["item", "case"]
+    provenance: ReferenceProvenance
+    source: str = ""
+    year: int | None = None
+    number: int | None = None
+    grade: Literal[5, 7] | None = None
+    area: str = ""
+    item_type: str = ""
+    item_format: str = ""
+    discourse: str = ""
+    stem_type: str = ""
+    text: str = Field(min_length=1)
+    item: dict | None = None
+    answer: int | None = Field(default=None, ge=1, le=5)
+    answer_verified: bool = False
+    tags: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def identity(self):
+        _identity(self.track, self.grade)
+        for value in (self.id, self.source, *self.tags):
+            _allowed_source(value)
+        return self
+
+
+class RefQuery(StrictModel):
+    track: str
+    role: Literal["item", "case"] = "item"
+    area: str | None = None
+    item_type: str | None = None
+    item_format: str | None = None
+    discourse: str | None = None
+    stem_type: str | None = None
+    grade: Literal[5, 7] | None = None
+    text: str = ""
+    k: int = Field(default=4, ge=1, le=50)
+    exclude_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def identity(self):
+        _identity(self.track, self.grade)
+        return self
+
+
+def norm(value):
+    return " ".join(str(value).split()) if value not in (None, "") else None
+
+
+def grams(text):
+    text = "".join(str(text).split())
+    return Counter(text[i:i + 2] for i in range(len(text) - 1))
+
+
+def overlap(a, b):
+    if not a or not b:
+        return 0.0
+    return sum((a & b).values()) / (sum(a.values()) ** 0.5 * sum(b.values()) ** 0.5)
+
+
+class ReferenceIndex:
+    def __init__(self, path, readonly=False):
+        self.path = Path(path).resolve()
+        self.readonly = readonly
+        exists = self.path.exists()
+        if readonly and not exists:
+            raise FileNotFoundError("참고 색인이 없습니다(검색은 DB를 생성하지 않습니다): " + str(self.path))
+        if not exists:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        uri = self.path.as_uri() + ("?mode=ro" if readonly else "?mode=rwc")
+        self.db = sqlite3.connect(uri, uri=True)
+        try:
+            if not exists:
+                with self.db:
+                    self.db.execute("CREATE TABLE track_index_meta (version TEXT NOT NULL)")
+                    self.db.execute("INSERT INTO track_index_meta VALUES (?)", (SCHEMA_VERSION,))
+                    self.db.execute("""CREATE TABLE track_refs (
+                        track TEXT NOT NULL, grade INTEGER NOT NULL CHECK(grade IN (-1,5,7)),
+                        id TEXT NOT NULL, role TEXT NOT NULL, area TEXT, item_type TEXT,
+                        item_format TEXT, discourse TEXT, stem_type TEXT, year INTEGER,
+                        record TEXT NOT NULL, PRIMARY KEY(track, grade, id))""")
+            self._check_schema()
+        except Exception:
+            self.db.close()
+            raise
+
+    def _check_schema(self):
+        try:
+            versions = self.db.execute("SELECT version FROM track_index_meta").fetchall()
+            columns = self.db.execute("PRAGMA table_info(track_refs)").fetchall()
+        except sqlite3.DatabaseError as exc:
+            raise ValueError("기존·알 수 없는 참고 색인 스키마입니다. 새 전용 DB를 사용하세요.") from exc
+        expected = ["track", "grade", "id", "role", "area", "item_type", "item_format", "discourse", "stem_type", "year", "record"]
+        primary = [row[1] for row in sorted(columns, key=lambda r: r[5]) if row[5]]
+        if versions != [(SCHEMA_VERSION,)] or [row[1] for row in columns] != expected or primary != ["track", "grade", "id"]:
+            raise ValueError("참고 색인 버전·스키마가 다릅니다. 제자리 변환하지 말고 새 전용 DB를 만드세요.")
+
+    def close(self):
+        self.db.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def build(self, jsonl, tracks=None):
+        """Explicit development records only; validate every row before replacement.
+
+        Relative provenance.file paths resolve against the JSONL's directory.
+        The fresh index stores their absolute paths and verified source hashes.
+        """
+        if self.readonly:
+            raise ValueError("읽기 전용 참고 색인에는 쓸 수 없습니다")
+        paths = [jsonl] if isinstance(jsonl, (str, Path)) else list(jsonl)
+        records, errors, verified = [], [], {}
+        for raw in paths:
+            path = Path(raw).resolve()
+            _allowed_source(str(path))
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
+                    row = RefRecord.model_validate_json(line)
+                    if tracks is not None and row.track not in tracks:
+                        raise ValueError("지정한 범위 밖 트랙: " + row.track)
+                    source = Path(row.provenance.file)
+                    source = (source if source.is_absolute() else path.parent / source).resolve()
+                    _allowed_source(str(source))
+                    if not source.is_file():
+                        raise ValueError("출처 파일이 없습니다")
+                    if source not in verified:
+                        verified[source] = hashlib.sha256(source.read_bytes()).hexdigest()
+                    if verified[source] != row.provenance.sha256:
+                        raise ValueError("출처 파일 SHA256 불일치")
+                    row.provenance.file = str(source)
+                    records.append(row)
+                except (ValueError, OSError) as exc:
+                    errors.append({"line": number, "file": str(path), "error": str(exc)[:300]})
+        duplicate = [key for key, count in Counter((r.track, r.grade, r.id) for r in records).items() if count > 1]
+        if duplicate:
+            errors.append({"line": None, "error": "같은 트랙·급수 안의 중복 ID", "identities": duplicate})
+        if errors:
+            return {"schema_version": SCHEMA_VERSION, "indexed": 0, "errors": errors}
+        rows = [(r.track, r.grade if r.grade is not None else NONE_GRADE, r.id, r.role,
+                 norm(r.area), norm(r.item_type), norm(r.item_format), norm(r.discourse), norm(r.stem_type),
+                 r.year, r.model_dump_json()) for r in records]
+        with self.db:
+            self.db.execute("DELETE FROM track_refs")
+            self.db.executemany("INSERT INTO track_refs VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+        return {"schema_version": SCHEMA_VERSION, "indexed": len(rows), "errors": [], "vocabulary": self.vocabulary()}
+
+    def vocabulary(self, track=None):
+        if track is not None and track not in NAMES:
+            raise ValueError("알 수 없는 트랙: " + track)
+        where, args = ("WHERE track = ?", [track]) if track else ("", [])
+        out = {}
+        for facet in ("track", "role") + FACETS:
+            out[facet] = {("None" if facet == "grade" and value == NONE_GRADE else str(value)): count
+                          for value, count in self.db.execute(
+                              f"SELECT {facet}, count(*) FROM track_refs {where} "
+                              f"{'AND' if where else 'WHERE'} {facet} IS NOT NULL GROUP BY {facet} ORDER BY 2 DESC", args)}
+        return out
+
+    def search(self, query: RefQuery):
+        query = RefQuery.model_validate(query.model_dump())
+        where, args = ["track = ?", "grade = ?", "role = ?"], [query.track, query.grade if query.grade is not None else NONE_GRADE, query.role]
+        for facet in FACETS:
+            if facet == "grade":
+                continue
+            value = getattr(query, facet)
+            if value not in (None, ""):
+                where.append(f"{facet} = ?")
+                args.append(norm(value))
+        records = []
+        # Match every indexed field, including ID and facet values, against the
+        # payload so a damaged index cannot bypass filtering or exclusions.
+        for row in self.db.execute(
+                "SELECT track, grade, id, role, area, item_type, item_format, discourse, stem_type, year, record "
+                "FROM track_refs WHERE " + " AND ".join(where), args):
+            record = RefRecord.model_validate_json(row[-1])
+            expected = (record.track, record.grade if record.grade is not None else NONE_GRADE, record.id,
+                        record.role, norm(record.area), norm(record.item_type), norm(record.item_format),
+                        norm(record.discourse), norm(record.stem_type), record.year)
+            if row[:-1] != expected:
+                raise ValueError("참고 색인 행의 ID·분류 값과 저장 본문이 다릅니다. 색인을 다시 검토하세요.")
+            _allowed_source(str(Path(record.provenance.file).resolve()))
+            records.append(record)
+        records = [r for r in records if r.id not in set(query.exclude_ids)]
+        target = grams(query.text) if query.text else None
+        records.sort(key=lambda r: (-(overlap(target, grams(r.text)) if target else 0), -(r.year or 0), r.id))
+        hits = records[:query.k]
+        verified_sources = {}
+        for record in hits:
+            source = Path(record.provenance.file).resolve()
+            if source not in verified_sources:
+                if not source.is_file():
+                    raise ValueError(f"{record.id}: 현재 출처 파일이 없어 참고 자료를 사용할 수 없습니다")
+                try:
+                    verified_sources[source] = hashlib.sha256(source.read_bytes()).hexdigest()
+                except OSError as exc:
+                    raise ValueError(f"{record.id}: 현재 출처 파일을 확인하지 못해 참고 자료를 사용할 수 없습니다") from exc
+            if verified_sources[source] != record.provenance.sha256:
+                raise ValueError(f"{record.id}: 출처 파일 SHA256이 바뀌어 참고 자료를 사용할 수 없습니다. 재검토 후 새 색인을 만드세요.")
+        used = {f: getattr(query, f) for f in FACETS if getattr(query, f) not in (None, "")}
+        missing = [] if len(hits) >= query.k else [f"{query.track} {query.role} 사례가 조건 {used}에서 {len(hits)}개뿐입니다(요청 {query.k}). 완화하지 않았습니다."]
+        return {"schema_version": SCHEMA_VERSION, "usage": "development", "query": query.model_dump(),
+                "hits": [r.model_dump() for r in hits], "missing": missing,
+                "verified_source_files": len(verified_sources), "semantic_accuracy_verified": False}
+
+
+def gather(index: ReferenceIndex | None, track, brief, stage):
+    queries = track.stage_queries(brief, stage)
+    if index is None:
+        return {name: {"query": q.model_dump(), "hits": [], "missing": ["참고 색인 없음"]} for name, q in queries.items()}
+    return {name: index.search(query) for name, query in queries.items()}

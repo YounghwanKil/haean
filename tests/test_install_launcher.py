@@ -13,6 +13,44 @@ def load(name):
     return module
 
 
+def test_typeset_launcher_preserves_literal_arguments_and_child_failure(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    module = load("launch")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    python = tmp_path / ".venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    arguments = ["source with spaces.json", "--template", "$(literal).hwpx", "--strict"]
+    monkeypatch.setattr(sys, "argv", ["haean", "typeset", *arguments])
+    calls = []
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=1)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module.main() == 1
+    assert calls == [([str(python), "-m", "haean_typeset", *arguments], {})]
+
+
+@pytest.mark.parametrize("arguments", [["--help"], ["-h"], ["--check", "--help"]])
+def test_doctor_help_never_starts_diagnostics_or_codex(arguments, monkeypatch, capsys):
+    module = load("launch")
+    monkeypatch.setattr(sys, "argv", ["haean", "doctor", *arguments])
+    monkeypatch.setattr(module, "doctor", lambda **kw: pytest.fail("help must not run diagnostics"))
+    monkeypatch.setattr(module.shutil, "which", lambda *a: pytest.fail("help must not find Codex"))
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **kw: pytest.fail("help must not launch subprocesses"))
+    assert module.main() == 0
+    output = capsys.readouterr().out
+    assert "사용법: haean doctor [--check]" in output and "종료 코드 1" in output
+
+
+def test_invalid_doctor_option_does_not_fall_through_to_codex(monkeypatch):
+    module = load("launch")
+    monkeypatch.setattr(sys, "argv", ["haean", "doctor", "--unknown"])
+    monkeypatch.setattr(module.shutil, "which", lambda *a: pytest.fail("invalid doctor option must not find Codex"))
+    with pytest.raises(ValueError, match="사용법: haean doctor"):
+        module.main()
+
+
 def test_install_conflict_and_uninstall_preserve_unrelated_files(tmp_path, monkeypatch):
     module = load("install")
     root, bin_dir = tmp_path / "repo", tmp_path / "bin"

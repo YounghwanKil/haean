@@ -20,7 +20,7 @@ haean = "haean.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-haean = ["prompts/*.md"]
+haean = ["prompts/*.md", "tracks/*/rules/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

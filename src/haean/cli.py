@@ -18,6 +18,8 @@ def main():
     parser = argparse.ArgumentParser(description="haean — LEET·PSAT 출제 및 검토")
     parser.add_argument("--db", default="data/corpus.sqlite")
     sub = parser.add_subparsers(dest="command", required=True)
+    from .track_cli import add_parser
+    add_parser(sub)
     p = sub.add_parser("import", help="원본을 읽기 전용으로 색인")
     p.add_argument("paths", nargs="+", type=Path)
     p.add_argument("--refresh", action="store_true")
@@ -182,6 +184,10 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         if args.command == "verify-source-profiles" and not result["valid"]:
             raise SystemExit(1)
+        if args.command == "track" and args.track_command == "brief-check" and not result["valid"]:
+            raise SystemExit(1)
+        if args.command == "track" and args.track_command == "ref-build" and result["errors"]:
+            raise SystemExit(1)
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         print(f"haean: {exc}", file=sys.stderr)
         raise SystemExit(2)
@@ -192,6 +198,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == "track":
+        from .track_cli import dispatch as track_dispatch
+        return track_dispatch(a)
     if a.command == "verify-source-profiles":
         from .source_identity import verify
         return verify(a.input, a.out)
