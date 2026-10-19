@@ -31,7 +31,7 @@ description: 팀 해안의 LEET 추리논증·PSAT 5급/7급 출제·검토·모
 
 소재와 핵심 판단을 먼저 설계하는 단계별 출제를 요청하면 `docs/TRACK_INTEGRATION.md`를 읽고 `track attach/generate` 연결을 검토한다. 기존 prepared run의 자료와 검토 경로를 유지하는 선택 기능이며 전체 회차 생성틀이나 native 블록 출력과는 범위가 다르다. 새 트랙 분류와 기존 유형명이 다르면 명시 대응을 남기고 고정 평가 과제를 바꾸지 않는다.
 
-회차 전체의 외부 형식·내용설계는 `haean-exam`과 `docs/COMPOSITION.md`의 선택 `compose` 경로를 사용한다. 설계를 실제 40문항 작성 완료로 세지 않으며, 번호로 ID를 다시 만들거나 원래 유형·소재·난도를 조용히 교체하지 않는다.
+회차 전체의 외부 형식·내용설계는 `haean-exam`과 `docs/COMPOSITION.md`의 선택 `compose` 경로를 사용한다. 설계를 실제 문항 작성 완료로 세지 않으며, 번호로 ID를 다시 만들거나 원래 유형·소재·난도를 조용히 교체하지 않는다.
 
 ## Codex의 작업 분담
 

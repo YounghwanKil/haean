@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from .models import Draft
+from .composition.profiles import slot_count
 
 
 VERSION = "haean-full-exam-composition-v1"
@@ -83,11 +84,11 @@ def _load_design(path):
     return load_design(path)
 
 
-def _slots(rows, label):
-    if not isinstance(rows, list) or len(rows) != 40:
-        raise ValueError(f"composition {label}: 40개 슬롯이 필요합니다")
+def _slots(rows, label, count):
+    if not isinstance(rows, list) or len(rows) != count:
+        raise ValueError(f"composition {label}: {count}개 슬롯이 필요합니다")
     numbers = [row.get("slot") for row in rows if isinstance(row, dict)]
-    if len(numbers) != 40 or any(type(n) is not int for n in numbers) or sorted(numbers) != list(range(1, 41)):
+    if len(numbers) != count or any(type(n) is not int for n in numbers) or sorted(numbers) != list(range(1, count + 1)):
         raise ValueError(f"composition {label}: 슬롯 번호 누락·중복")
     return {row["slot"]: row for row in rows}
 
@@ -96,7 +97,15 @@ def _set_membership(design, formats):
     """Read explicit set fields, or verified verbal skeleton.sets, never position."""
     track = design["track"]
     membership = {n: None for n in formats}
-    if track == "psat_verbal":
+    if design["exam_grade"] == 7:
+        # The dedicated 7급 engine validates these against its explicit local
+        # profile. No 5급 boolean skeleton or bundle positions are inherited.
+        for n, row in formats.items():
+            key = row.get("set_id")
+            if "set_id" not in row or (key is not None and (not isinstance(key, str) or not key)):
+                raise ValueError(f"composition 7급 {n}번 set_id 누락·오류")
+            membership[n] = key
+    elif track == "psat_verbal":
         refs = [r for r in design["profile"]["files"] if r["role"] == "format_rules"]
         if len(refs) != 1:
             raise ValueError("언어논리 세트 검증에는 format_rules 파일 하나가 필요합니다")
@@ -137,11 +146,14 @@ def _set_membership(design, formats):
 
 
 def _validate_assignment(plan, design, rows):
-    if (plan.get("exam") not in {"leet", "psat5"} or len(plan.get("slots", [])) != 40
+    count = slot_count(design)
+    if (len(plan.get("slots", [])) != count
             or design.get("exam") != plan["exam"] or design.get("subject") != plan.get("subject")
-            or design.get("track") != TRACKS.get(plan.get("subject"))
-            or design.get("exam_grade") != (None if plan["exam"] == "leet" else 5)):
-        raise ValueError("composition 시험·과목·트랙·급수 불일치: LEET/PSAT5 40문항만 지원합니다")
+            or design.get("track") != TRACKS.get(plan.get("subject"))):
+        raise ValueError("composition 시험·과목·트랙·급수 불일치: LEET/PSAT5 40문항, PSAT7 25문항")
+    numbers = [slot.get("number") for slot in plan["slots"]]
+    if any(type(number) is not int for number in numbers) or sorted(numbers) != list(range(1, count + 1)):
+        raise ValueError(f"composition 배정표 번호는 정수 1–{count}의 중복 없는 순열이어야 합니다")
     if any(not isinstance(slot.get(key), str) or not slot[key].strip()
            for slot in plan["slots"] for key in ("id", "topic", "domain", "difficulty")):
         raise ValueError("composition 회차 배정에는 ID·소재·영역·개별 난도가 필요합니다")
@@ -149,19 +161,19 @@ def _validate_assignment(plan, design, rows):
         raise ValueError("composition 기존 Draft 연결의 개별 난도는 하·중·상만 지원합니다. 세부 난도를 임의 환산하지 않습니다")
     if design.get("validation", {}).get("errors"):
         raise ValueError("외부 설계 검증 오류가 남아 있습니다")
-    formats = _slots(design.get("format_design", {}).get("slots"), "형식")
-    contents = _slots(design.get("content_spec", {}).get("슬롯"), "내용")
-    if not isinstance(rows, list) or len(rows) != 40:
-        raise ValueError("composition mapping은 40개 명시적 대응 행이 필요합니다")
+    formats = _slots(design.get("format_design", {}).get("slots"), "형식", count)
+    contents = _slots(design.get("content_spec", {}).get("슬롯"), "내용", count)
+    if not isinstance(rows, list) or len(rows) != count:
+        raise ValueError(f"composition mapping은 {count}개 명시적 대응 행이 필요합니다")
     required = {"number", "item_id", "external_slot", "legacy_item_type", "external_type", "mapping_rationale",
                 "external_set_key", "shared_passage_id", "external_difficulty", "difficulty_mapping"}
     if any(not isinstance(row, dict) or not required <= set(row) for row in rows):
         raise ValueError("composition mapping 필수 필드 누락: null 대응도 명시하세요")
     if (any(type(row["number"]) is not int or type(row["external_slot"]) is not int for row in rows)
-            or sorted(row["number"] for row in rows) != list(range(1, 41))
-            or sorted(row["external_slot"] for row in rows) != list(range(1, 41))):
+            or sorted(row["number"] for row in rows) != list(range(1, count + 1))
+            or sorted(row["external_slot"] for row in rows) != list(range(1, count + 1))):
         raise ValueError("composition mapping 번호·외부 슬롯 누락·중복")
-    if any(not isinstance(row["item_id"], str) for row in rows) or len({row["item_id"] for row in rows}) != 40:
+    if any(not isinstance(row["item_id"], str) for row in rows) or len({row["item_id"] for row in rows}) != count:
         raise ValueError("composition mapping 문항 ID 누락·중복")
     plan_by_id = {row["id"]: row for row in plan["slots"]}
     if set(plan_by_id) != {row["item_id"] for row in rows}:

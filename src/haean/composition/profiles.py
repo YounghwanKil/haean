@@ -9,12 +9,8 @@ from pathlib import Path
 import re
 
 
-TRACKS = {
-    "leet_reasoning": ("leet", "추리논증", None),
-    "psat_verbal": ("psat5", "언어논리", 5),
-    "psat_data": ("psat5", "자료해석", 5),
-    "psat_situation": ("psat5", "상황판단", 5),
-}
+TRACKS = {"leet_reasoning": "추리논증", "psat_verbal": "언어논리",
+          "psat_data": "자료해석", "psat_situation": "상황판단"}
 REQUIRED = {"format_rules", "content_rules", "content_config", "rules_config"}
 ROLES = REQUIRED | {"labels"}
 
@@ -44,11 +40,20 @@ def read_json(path):
 
 def identity(value):
     if not isinstance(value, dict) or value.get("track") not in TRACKS:
-        raise ValueError("회차 설계는 LEET 추리논증·PSAT 5급 세 과목만 지원합니다")
-    expected = TRACKS[value["track"]]
-    actual = (value.get("exam"), value.get("subject"), value.get("exam_grade"))
-    if actual != expected or (expected[2] is not None and type(actual[2]) is not int):
+        raise ValueError("회차 설계는 LEET 추리논증·PSAT 5·7급 세 과목을 지원합니다")
+    exam, grade = value.get("exam"), value.get("exam_grade")
+    if value["track"] == "leet_reasoning":
+        valid = exam == "leet" and grade is None
+    else:
+        valid = type(grade) is int and (exam, grade) in {("psat5", 5), ("psat7", 7)}
+    if not valid or value.get("subject") != TRACKS[value["track"]]:
         raise ValueError("회차 프로필의 시험·과목·급수 불일치")
+
+
+def slot_count(value):
+    """Derive size from a checked product identity, never from a caller label."""
+    identity(value)
+    return 25 if value["exam"] == "psat7" else 40
 
 
 @dataclass(frozen=True)
@@ -59,9 +64,12 @@ class Profile:
 
     def engine(self):
         # Import names come only from the fixed allowlist, never from source data.
-        module = import_module("haean.composition.engines." + self.manifest["track"])
+        identity(self.manifest)
+        grade7 = self.manifest["exam"] == "psat7"
+        module = import_module("haean.composition.engines." + ("psat7" if grade7 else self.manifest["track"]))
         try:
-            return module.Engine(**self.values)
+            kwargs = {"subject": self.manifest["subject"]} if grade7 else {}
+            return module.Engine(**self.values, **kwargs)
         except (KeyError, TypeError, IndexError, ZeroDivisionError) as exc:
             raise ValueError(f"회차 프로필 구조 오류: {exc}") from exc
 
@@ -107,8 +115,10 @@ def load_profile(path: Path) -> Profile:
         values[role] = loaded
         inputs[role + ".json"] = source
         files.append({**record, "path": str(source)})
-    if not REQUIRED <= values.keys() or (value["track"] == "psat_verbal" and "labels" not in values):
-        raise ValueError("필수 회차 프로필 파일 누락 (언어논리는 labels도 필요)")
+    if not REQUIRED <= values.keys() or (value["exam"] == "psat5" and value["track"] == "psat_verbal" and "labels" not in values):
+        raise ValueError("필수 회차 프로필 파일 누락 (5급 언어논리는 labels도 필요)")
+    if value["exam"] == "psat7" and set(values) != REQUIRED:
+        raise ValueError("7급은 전용 format_rules/content_rules/content_config/rules_config 네 파일을 사용합니다")
     if sha(path) != original_sha:
         raise ValueError("읽는 중 프로필 manifest가 바뀌었습니다")
     manifest = {**value, "files": files, "manifest_path": str(path), "manifest_sha256": original_sha,

@@ -11,7 +11,7 @@ description: 해안 LEET·PSAT 모의고사 한 회의 유형 배정, 문항 배
 
 LEET 추리논증은 `src/haean/prompts/leet_editorial.md`의 회차 기준을 읽고 개별 문항 윤문 전에 소재·판단 구조의 중복을 조정한다. `full_exam.build`는 전체 슬롯 개요를 각 묶음의 `context.json`과 `request.md`에 전달한다. 이는 배정표 수준의 대조이므로 완성 문항도 원문 쌍으로 다시 확인한다. 1번의 규범 견해·주장 중심 배치는 선호이며, 특정 표본의 소재 개수나 글자수 통계를 보편적 상한으로 강제하지 않는다.
 
-외부 회차 규칙을 활용할 때는 `docs/COMPOSITION.md`를 읽는다. `compose design`으로 형식·내용설계 제안을 만든 뒤 `compose bind`로 기존 plan의 stable ID·유형·난도·공통지문과 명시 대응한다. 연결 패킷을 `exam-build --composition-packet`에 전달하며 원래 배정표를 덮어쓰지 않는다. 현재 이 선택 경로는 추리논증 40문항과 PSAT 5급 과목당 40문항이다. PSAT 7급·언어이해는 기존 경로를 유지한다. 설계에 있는 원천 메모의 빈칸·기출 ID는 검증된 참고 전문이 아니며, 외부 익명화·원형 변형 지시는 정확성·독창성 계약보다 우선하지 않는다.
+외부 회차 규칙을 활용할 때는 `docs/COMPOSITION.md`를 읽는다. `compose design`으로 형식·내용설계 제안을 만든 뒤 `compose bind`로 기존 plan의 stable ID·유형·난도·공통지문과 명시 대응한다. 연결 패킷을 `exam-build --composition-packet`에 전달하며 원래 배정표를 덮어쓰지 않는다. 이 선택 경로는 추리논증·PSAT 5급 40문항, PSAT 7급 25문항을 지원한다. 7급은 전용 프로필의 관측 통계와 편집 목표를 구분하고 과목별 판단 과제·오답·검토 기준을 연결한다. 5급 규칙을 절단하거나 이름만 바꾸지 않는다. 언어이해는 기존 경로를 유지한다. 설계에 있는 원천 메모의 빈칸·기출 ID는 검증된 참고 전문이 아니며, 외부 익명화·원형 변형 지시는 정확성·독창성 계약보다 우선하지 않는다.
 
 중단된 회차는 `docs/PRODUCTION.md`의 `exam-resume`를 사용해 새 경로에서 이어간다. composition 회차도 지원하지만 원 설계·코드·출처·묶음·검토 연결을 먼저 확인한다. 완료 묶음은 재사용하고 미완료 묶음만 이어가며, stale 해시를 다시 봉인하거나 누락된 검토를 완료로 만들지 않는다. composition의 `--replacement`와 불완전한 production manifest는 지원하지 않는다.
 

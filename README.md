@@ -104,7 +104,7 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 
 과목별 형식·내용 설계와 조판 기능은 [트랙 통합](docs/TRACK_INTEGRATION.md)에서 단계별로 연결하고 있습니다. `haean tools track list`로 실제 연결 범위를 확인할 수 있습니다. 기존 출제·위키·평가 명령과 자료는 유지합니다.
 
-로컬 회차 규칙을 갖고 있다면 [40슬롯 형식·내용설계](docs/COMPOSITION.md)를 선택해서 사용할 수 있습니다. `compose design` → `compose bind` → `exam-build --composition-packet`으로 기존 문항 ID와 검토 흐름에 연결합니다. 현재 LEET 추리논증·PSAT 5급용이며, 설계 제안을 문항 품질 검증으로 표시하지 않습니다.
+로컬 회차 규칙을 갖고 있다면 [급수별 형식·내용설계](docs/COMPOSITION.md)를 선택해서 사용할 수 있습니다. `compose design` → `compose bind` → `exam-build --composition-packet`으로 기존 문항 ID와 검토 흐름에 연결합니다. LEET 추리논증·PSAT 5급은 40문항, PSAT 7급은 전용 프로필로 25문항을 구성합니다. 설계 제안을 문항 품질 검증으로 표시하지 않습니다.
 
 팀원의 자유로운 검토 의견이 개선의 입력입니다. 특정 문항 의견은 검토한 버전과 연결하고, 공통 의견은 시험·과목별 피드백함에 원문 그대로 보관합니다. 자연어로 총괄에게 전달하거나 UTF-8 `.txt` 파일을 넣을 수 있습니다.
 

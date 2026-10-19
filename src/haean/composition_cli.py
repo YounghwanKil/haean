@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def add_parser(subparsers):
-    parser = subparsers.add_parser("compose", help="외부 규칙으로 40슬롯 회차 설계·기존 배정표 연결")
+    parser = subparsers.add_parser("compose", help="LEET·PSAT 5급 40문항 / 7급 25문항 회차 설계·배정표 연결")
     commands = parser.add_subparsers(dest="compose_command", required=True)
     design = commands.add_parser("design", help="형식·내용설계 제안; 모델 호출 없음")
     design.add_argument("profile", type=Path)
@@ -22,7 +22,7 @@ def add_parser(subparsers):
 
 def dispatch(args):
     from .composition import design, load_design
-    from .composition.profiles import read_json, sha
+    from .composition.profiles import read_json, sha, slot_count
     if args.compose_command == "design":
         try:
             return design(args.profile, args.out, seed=args.seed,
@@ -31,7 +31,7 @@ def dispatch(args):
             raise ValueError("기존 회차 설계는 보존합니다. 새 --out 경로를 지정하세요.") from exc
     if args.compose_command == "check":
         value = load_design(args.design)
-        return {"valid": True, "track": value["track"], "slots": 40, "validation": value["validation"],
+        return {"valid": True, "track": value["track"], "slots": slot_count(value), "validation": value["validation"],
                 "quality_verified": False, "human_approved": False}
     if args.compose_command == "bind":
         from .composition_adapter import bind
