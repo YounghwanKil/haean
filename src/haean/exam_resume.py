@@ -80,6 +80,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
     ids = [i for job in selected for i in job['ids']]
     if len(ids) != len(set(ids)) or set(ids) != set(slot_map):
         raise ValueError('재개 배정의 ID 중복·누락')
+    from .authoring_sources import supplied_source_ids
+    supplied_source_ids({'references': [], 'exam_assignment': [slot_map[i] for i in ids]})
     if out.exists():
         raise ValueError('새 재개 출력 경로가 필요합니다. 기존 기록을 보존합니다')
     out.mkdir(parents=True)
@@ -94,6 +96,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
     corpus = Corpus(db)
     for source in selected:
         parent = Path(source['run']).resolve()
+        supplied_source_ids(read(parent / 'context.json'))
         state = read(parent / 'status.json')
         candidate = parent / 'candidate.json'
         if state['state'] == 'awaiting_human_review':
@@ -133,6 +136,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                 'seed_path': str(seed_path) if seed_path else None}
             if revision_feedback is not None:
                 context['resume_lineage']['revision_feedback'] = revision_feedback
+            supplied_source_ids(context)
             save(run / 'context.json', context)
             save(run / 'lineage.json', context['resume_lineage'])
             provenance = read(run / 'provenance.json')

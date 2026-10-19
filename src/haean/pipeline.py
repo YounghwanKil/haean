@@ -95,8 +95,9 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
     brief = Brief.model_validate_json((run / "brief.json").read_text())
     context = json.loads((run / "context.json").read_text())
     instructions = writer_prompt(brief)
-    allowed = {r["id"] for r in context["references"]}
     try:
+        from .authoring_sources import supplied_source_ids
+        allowed = supplied_source_ids(context)
         validate_revision_feedback(revision_feedback, initial_draft)
         editor_feedback_input = {"revision_feedback": revision_feedback} if revision_feedback is not None else {}
         feedback_input = editor_feedback_input if revision_feedback is not None and revision_feedback["application"] == "pending_revision" else {}
@@ -124,6 +125,9 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
                                        **feedback_input}, Draft)
         for revision in range(max_revisions + 1):
             save(run / f"draft-r{revision}.json", draft.model_dump())
+            # Verify explicitly attached source packets again after model work.
+            # Their IDs are usable only while their captured content still matches.
+            allowed = supplied_source_ids(context)
             errors = validate(draft, brief, allowed, context.get('exam_assignment'))
             if additional_validation is not None:
                 errors.extend(additional_validation(draft))
@@ -143,6 +147,7 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
                                        **({"exam_editorial_context": context["exam_editorial_context"]} if context.get("exam_editorial_context") else {}),
                                        **({'exam_contract': context['exam_contract']} if context.get('exam_contract') else {}),
                                        **({'exam_assignment': context['exam_assignment']} if context.get('exam_assignment') else {})}, EditorialReview)
+            supplied_source_ids(context)
             errors.extend(review_gate(draft, blind, editorial))
             review = {"revision": revision, "blind": blind.model_dump(), "editorial": editorial.model_dump(),
                       "errors": errors, "similarity_hits": hits}

@@ -50,6 +50,10 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *
     if not 1 <= workers <= 3: raise ValueError('동시 출제 묶음은 1–3개')
     plan_path, out = Path(plan_path), Path(out)
     plan = load_plan(plan_path)
+    from .authoring_sources import supplied_source_ids
+    # Check all explicit source attachments before any bundle starts a model call.
+    bundles(plan)
+    supplied_source_ids({'references': [], 'exam_assignment': plan['slots']})
     composition = None
     if composition_packet is not None:
         from .composition_adapter import load_packet, _file_ref
@@ -95,6 +99,8 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *
             '표→그래프는 bar 또는 line의 범주·계열·축 단위와 선택지별 실제 수치를 넣는다. '
             '텍스트 설명만으로 그림 유형을 대체하거나 렌더가 끝났다고 쓰지 말라. '
             '사용하지 않는 그림 필드는 빈 배열/빈 문자열로 채운다. 그림이 필요 없는 문항의 figures는 빈 배열이다.')
+        # Check conflicts with the actual retrieval too, before launching any job.
+        supplied_source_ids(context)
         save(run/'context.json', context)
         with (run/'request.md').open('a') as f:
             f.write('\n\n회차 배정:\n'+json.dumps(group, ensure_ascii=False, indent=2))
