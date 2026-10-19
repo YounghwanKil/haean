@@ -14,6 +14,15 @@ from haean.tracks.core.references import RefQuery, ReferenceIndex
 from test_reference_bridge import corpus_data, sha, save
 
 
+LEGACY_ANSWER_HEADER = (
+    "2032년도 국가공무원 5급 합성 시험 및 지역인재 7급 합성 시험\n\n\n\n\n"
+    "정 답 표\n\n과목 및 책형 : 언어논리                  ◯\n"
+    "                                다 책형\n\n")
+CONTINUED_ANSWER_HEADER = (
+    "2032년도 국가공무원 5급 합성 시험 및 지역인재 7급 합성 시험 및\n"
+    "법원행정고등고시 제1차 시험\n\n정답표\n영역 언어논리 책형 다 책형\n")
+
+
 @pytest.fixture
 def audit(corpus_data, tmp_path, monkeypatch, request):
     d = corpus_data
@@ -57,7 +66,9 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
         raw_row = f" {left_number} 2 {left_number + 20} 4"
         if options.get("two_cell_tables"):
             raw_row = f" {left_number} 2"
-        answer_text = f"2032년도 국가공무원 {grade}급 공개경쟁채용\n정답표\n영역 언어논리 책형 다 책형\n문번 정답 문번 정답\n{raw_row}\n\f"
+        answer_header = options.get("answer_headers", {}).get(
+            grade, f"2032년도 국가공무원 {grade}급 공개경쟁채용\n정답표\n영역 언어논리 책형 다 책형\n")
+        answer_text = f"{answer_header}문번 정답 문번 정답\n{raw_row}\n\f"
         if extra_rows := options.get("extra_answer_rows", {}).get(grade):
             answer_text = answer_text.replace("\f", "\n".join(extra_rows) + "\n\f")
         answer_pdf.write_bytes(synthetic_pdf(answer_text.rstrip("\f")) if real_pdf else answer_text.encode("utf-8"))
@@ -80,8 +91,9 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
         question_pdf.write_bytes(questions[grade].read_bytes())
         question_download = {"path": str(question_pdf), "sha256": sha(question_pdf), "grade": grade}
         member = None
+        filename = options.get("question_filenames", {}).get(grade, "언어논리-다.pdf")
         if grade == 7:
-            member = "언어논리-다.pdf"
+            member = filename
             archive = tmp_path / "questions.zip"
             with zipfile.ZipFile(archive, "w") as z:
                 z.writestr(member, question_pdf.read_bytes())
@@ -89,7 +101,7 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
                                        "endpoint": endpoint, "request_method": "POST"})
             question_download["zip_member"] = member
         else:
-            question_download.update(endpoint=endpoint, attachment={"strgFileNm": "언어논리-다.pdf"})
+            question_download.update(endpoint=endpoint, attachment={"strgFileNm": filename})
         question_downloads.append(question_download)
         image = tmp_path / f"synthetic-render-{grade}.png"
         image.write_bytes(f"synthetic visual evidence {grade}".encode())
@@ -144,6 +156,121 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
 
 def enrich(d):
     return reference_answers.enrich(d["refs"], d["manifest"], d["new"])
+
+
+@pytest.mark.parametrize("audit", [
+    {"answer_headers": {5: LEGACY_ANSWER_HEADER}, "real_pdf": real_pdf,
+     "question_filenames": {5: "2._언어논리(다).pdf"}}
+    for real_pdf in (False, True)
+], indirect=True)
+def test_legacy_split_line_header_and_parenthesized_booklet_enrich_build_search(audit):
+    assert enrich(audit)["exported"] == 2
+    with ReferenceIndex(audit["new"] / "index.sqlite") as index:
+        assert index.build(audit["new"] / "refs.jsonl")["indexed"] == 2
+        hit = index.search(RefQuery(track="psat_verbal", grade=5))["hits"][0]
+        assert (hit["year"], hit["answer"], hit["answer_verified"]) == (2032, 2, True)
+
+
+@pytest.mark.parametrize("audit", [
+    {"answer_headers": {5: CONTINUED_ANSWER_HEADER}, "real_pdf": real_pdf}
+    for real_pdf in (False, True)
+], indirect=True)
+def test_modern_two_line_exam_title_enrich_build_search(audit):
+    assert enrich(audit)["exported"] == 2
+    with ReferenceIndex(audit["new"] / "index.sqlite") as index:
+        assert index.build(audit["new"] / "refs.jsonl")["indexed"] == 2
+        hit = index.search(RefQuery(track="psat_verbal", grade=5))["hits"][0]
+        assert (hit["year"], hit["answer"], hit["answer_verified"]) == (2032, 2, True)
+
+
+@pytest.mark.parametrize("audit", [
+    {"answer_headers": {5: CONTINUED_ANSWER_HEADER.replace(old, new)}}
+    for old, new in (
+        ("법원행정고등고시 제1차 시험\n", ""),
+        ("법원행정고등고시 제1차 시험", "알 수 없는 시험"),
+        ("법원행정고등고시 제1차 시험", "법원행정고등고시 제1차 시험 영역 자료해석 책형 라 책형"),
+        ("법원행정고등고시 제1차 시험", "법원행정고등고시 제1차 시험\n법원행정고등고시 제1차 시험"),
+        ("시험 및\n", "시험\n"),
+        ("국가공무원 5급", "국가공무원 7급"),
+    )
+], indirect=True)
+def test_modern_incomplete_or_ambiguous_continued_title_never_publishes(audit):
+    with pytest.raises(ValueError, match="정답표 실제 PDF.*머리글 불일치"):
+        enrich(audit)
+    assert not (audit["new"] / "refs.jsonl").exists()
+
+
+@pytest.mark.parametrize("audit", [
+    {"answer_headers": {5: LEGACY_ANSWER_HEADER.replace(old, new)}}
+    for old, new in (
+        ("2032년도", "2033년도"),
+        ("국가공무원 5급", "국가공무원 7급"),
+        ("언어논리", "자료해석"),
+        ("다 책형", "라 책형"),
+        ("과목 및 책형 :", "과목 및 책형"),
+        ("◯", ""),
+        ("다 책형", ""),
+        ("다 책형", "다 책형 라 책형"),
+        ("다 책형", "다 책형\n다 책형"),
+        ("언어논리", "언어논리 자료해석"),
+        ("정 답 표", ""),
+        ("정 답 표", "정 답 표\n영역 언어논리 책형 다 책형"),
+        ("2032년도", "2033년도 국가공무원 5급 합성 시험 2032년도"),
+        ("정 답 표", "2032년도 국가공무원 5급 합성 시험\n정 답 표"),
+    )
+] + [{"answer_headers": {7: LEGACY_ANSWER_HEADER.replace("국가공무원 5급", "국가공무원 7급")}}], indirect=True)
+def test_legacy_mismatched_incomplete_or_ambiguous_header_never_publishes(audit):
+    with pytest.raises(ValueError, match="정답표 실제 PDF.*머리글 불일치"):
+        enrich(audit)
+    assert not (audit["new"] / "refs.jsonl").exists()
+
+
+@pytest.mark.parametrize("declaration", [
+    "영역 언어논리 책형 다 책형 라 책형",
+    "영역 언어논리 책형 다 책형\n영역 언어논리 책형 라 책형",
+    "영역 언어논리 책형 다 책형\n과목 및 책형 : 언어논리 ◯\n다 책형",
+])
+def test_modern_header_does_not_accept_ambiguous_or_mixed_declarations(declaration):
+    page = f"2032년도 국가공무원 5급 합성 시험\n정답표\n{declaration}\n문번 정답\n1 2"
+    with pytest.raises(ValueError, match="머리글 불일치"):
+        reference_answers._verify_answer_header(
+            {"year": 2032, "grade": 5, "subject": "언어논리", "booklet": "다"}, page)
+
+
+@pytest.mark.parametrize("audit", [
+    {"answer_headers": {5: header.replace("\n", f" {declaration}\n", 1)}}
+    for header in (LEGACY_ANSWER_HEADER,
+                   "2032년도 국가공무원 5급 합성 시험\n정답표\n영역 언어논리 책형 다 책형\n")
+    for declaration in ("영역 자료해석 책형 라 책형", "과목 및 책형 : 자료해석 ◯ 라 책형",
+                        "영역 언어논리 책형 다 책형", "과목 및 책형 : 언어논리 ◯ 다 책형",
+                        "자료해석", "언어논리", "상황판단")
+], indirect=True)
+def test_subject_or_booklet_declaration_in_exam_title_never_publishes(audit):
+    with pytest.raises(ValueError, match="정답표 실제 PDF.*머리글 불일치"):
+        enrich(audit)
+    assert not (audit["new"] / "refs.jsonl").exists()
+
+
+@pytest.mark.parametrize("audit", [
+    {"question_filenames": {5: filename, 7: filename}}
+    for filename in ("언어논리-다.pdf", "언어논리영역_다.pdf", "2._언어논리(다).pdf")
+], indirect=True)
+def test_supported_question_filename_forms_match_attachment_and_zip_member(audit):
+    assert enrich(audit)["exported"] == 2
+
+
+@pytest.mark.parametrize("audit", [
+    {"question_filenames": {grade: filename}}
+    for grade in (5, 7)
+    for filename in ("2._언어논리(라).pdf", "2._언어논리(다)수정.pdf", "2._언어논리(다.pdf",
+                     "2._언어논리다).pdf", "2._언어논리(라)(다).pdf", "2._언어논리(다)-라.pdf",
+                     "2._자료해석(다).pdf", "2._언어논리자료해석(다).pdf", "자료해석_언어논리(다).pdf",
+                     "언어논리-라-다.pdf", "언어논리(다).txt")
+], indirect=True)
+def test_misleading_question_filename_never_publishes(audit):
+    with pytest.raises(ValueError, match="공식 문제 첨부의 과목·책형 불일치"):
+        enrich(audit)
+    assert not (audit["new"] / "refs.jsonl").exists()
 
 
 @pytest.mark.parametrize("audit", [

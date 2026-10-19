@@ -63,6 +63,43 @@ def _pdf_text(path, cache):
     return cache[path]
 
 
+def _verify_answer_header(row, page):
+    """Recognize complete modern headers or the audited split-line 5급 header."""
+    lines = [_norm(line) for line in page.splitlines() if line.strip()]
+    header = []
+    for line in lines[:5]:
+        if line in ("문번정답", "문번정답문번정답"):
+            break
+        header.append(line)
+    else:
+        _require(False, "정답표 실제 PDF의 시험·과목·책형 머리글 불일치")
+    identities = re.findall(r"([0-9]+)년도국가공무원([0-9]+)급", header[0] if header else "")
+    identity = f"{row['year']}년도국가공무원{row['grade']}급"
+    subject, booklet = _norm(row["subject"]), _norm(row["booklet"])
+    modern = ["정답표", f"영역{subject}책형{booklet}책형"]
+    # The legacy PDF extracts its circle and enclosed booklet on separate lines.
+    legacy = ["정답표", f"과목및책형:{subject}◯", f"{booklet}책형"]
+    continued_title = bool(header) and header[0].endswith("및")
+    # The audited modern 5급 title continues with the court exam on a second line.
+    if continued_title:
+        modern = ["법원행정고등고시제1차시험", *modern]
+    _require(bool(header) and header[0].startswith(identity)
+             and identities == [(str(row["year"]), str(row["grade"]))]
+             and not any(label in header[0] for label in ("영역", "과목", "책형", *SUBJECTS.values()))
+             and (header[1:] == modern and (not continued_title or row["grade"] == 5)
+                  or row["grade"] == 5 and not continued_title and header[1:] == legacy),
+             "정답표 실제 PDF의 시험·과목·책형 머리글 불일치")
+
+
+def _verify_question_filename(row, filename):
+    """Accept audited subject/booklet basenames, including terminal parentheses."""
+    name = Path(filename)
+    subject, booklet = re.escape(_norm(row["subject"])), re.escape(_norm(row["booklet"]))
+    pattern = rf"(?:[0-9]+[._-]*)?{subject}(?:영역)?(?:[-_]?{booklet}|\({booklet}\))"
+    _require(name.suffix.lower() == ".pdf" and re.fullmatch(pattern, _norm(name.stem)),
+             "공식 문제 첨부의 과목·책형 불일치")
+
+
 def _verify_answer_row(row, page):
     """Match an explicit table side and its complete, unique PDF text row."""
     locator, number = row["answer_locator"], row["number"]
@@ -221,10 +258,7 @@ def verify_official_answer_evidence(record, base, verified, extracted=None):
     _require(_integer(page_number) and page_number <= len(pages)
              and page_number in source["relevant_physical_pages"], "정답표 PDF 쪽 위치 불일치")
     page = pages[page_number - 1]
-    header = _norm("\n".join(page.splitlines()[:8]))
-    _require(f"{row['year']}년도국가공무원{row['grade']}급" in header
-             and re.search(r"영역" + re.escape(row["subject"]) + r"책형" + re.escape(_norm(row["booklet"])) + r"책형", header),
-             "정답표 실제 PDF의 시험·과목·책형 머리글 불일치")
+    _verify_answer_header(row, page)
     raw_row = _verify_answer_row(row, page)
     # Stored extraction line locations remain auditable; actual PDF comparison
     # ignores whitespace variation between Poppler versions.
@@ -300,9 +334,7 @@ def verify_official_answer_evidence(record, base, verified, extracted=None):
     else:
         filename = download["attachment"]["strgFileNm"]
         _require(download["endpoint"] == source["download_endpoint"], "공식 문제 다운로드 endpoint 불일치")
-    _require(_norm(row["subject"]) in _norm(filename)
-             and _norm(Path(filename).stem).endswith(_norm(row["booklet"])),
-             "공식 문제 첨부의 과목·책형 불일치")
+    _verify_question_filename(row, filename)
 
 
 def enrich(source_refs, evidence_manifest, out):
