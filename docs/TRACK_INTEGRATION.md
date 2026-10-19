@@ -8,6 +8,8 @@
 
 [실제 연결 검증](STAGED_AUTHORING_SMOKE.md)에서 LEET 추리논증과 PSAT 5급 자료해석을 각 1회 생성·검토했다. 정답 검토와 별개로 추론 가치의 부족이 관찰되어 성능 개선으로 채택하지 않았다.
 
+회차 전체는 별도 선택 [형식·내용설계 연결](COMPOSITION.md)을 제공한다. 외부 로컬 규칙으로 LEET 추리논증·PSAT 5급의 40슬롯을 설계하고, 기존 배정표와 명시 대응한 뒤 `exam-build --composition-packet`으로 작성·검토한다. 이 기능의 구조 검사와 설계 재현을 모델 성능 향상으로 합산하지 않는다.
+
 ```bash
 haean tools track list
 haean tools track schema brief
@@ -92,7 +94,7 @@ haean typeset data/manuscript.json --profile psat5_data --template data/question
 
 ## 이어서 연결할 기능과 검증
 
-1. 회차 전체의 형식 설계 → 내용 설계 → 작성 경로를 연결한다. 현재의 단위 소재·설계 실행과 구분한다.
+1. 새 회차 설계 연결의 실제 모델 작성·독립 검토를 제품군별로 확인한다. 구현·합성 검증과 실제 회차 품질을 구분한다. 새 composition 경로의 PSAT 7급·언어이해와 재개는 아직 지원하지 않는다.
 2. 지문 이해 부담과 선지 판단 부담을 분리하고, 오답의 오류 경로와 핵심 판단 우회를 검토한다.
 3. 검수 시간·토큰·재시도를 단계별로 측정한다. 결과를 재사용할 때 입력·지침·규칙·모델과 검토 증거의 일치를 확인한다.
 4. native 블록 작성·그림·회차 조립을 HWPX 출력과 연결하고 실제 한글 배치를 확인한다.

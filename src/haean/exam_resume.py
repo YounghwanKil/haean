@@ -60,6 +60,16 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
     if not 1 <= workers <= 3 or not 0 <= max_revisions <= 3:
         raise ValueError('workers 1–3, max_revisions 0–3 범위를 사용하세요')
     previous, out = Path(previous).resolve(), Path(out).resolve()
+    production = read(previous / 'production.json')
+    if ('composition' in production or any('composition' in job or
+            (Path(job['run']) / 'composition.json').exists() or
+            (Path(job['run']) / 'composition-binding.json').exists() for job in production['jobs'])):
+        raise ValueError('composition 회차 재개는 아직 지원하지 않습니다. 기존 sidecar·검토 binding을 보존하고 새 exam-build를 사용하세요')
+    for replacement in replacements:
+        replacement_production = read(replacement)
+        if ('composition' in replacement_production or any('composition' in job or
+                (Path(job['run']) / 'composition.json').exists() for job in replacement_production['jobs'])):
+            raise ValueError('composition 묶음은 기존 회차 재개의 대체 묶음으로 사용할 수 없습니다')
     plan = load_plan(previous / 'plan.json')
     selected = select_jobs(previous, replacements)
     slot_map = {s['id']: s for s in plan['slots']}

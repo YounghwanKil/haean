@@ -46,13 +46,25 @@ def brief_difficulty(group):
     return next(iter(levels)) if len(levels) == 1 and levels <= {'하', '중', '상'} else '중'
 
 
-def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
+def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *, composition_packet=None):
     if not 1 <= workers <= 3: raise ValueError('동시 출제 묶음은 1–3개')
     plan_path, out = Path(plan_path), Path(out)
     plan = load_plan(plan_path)
+    composition = None
+    if composition_packet is not None:
+        from .composition_adapter import load_packet, _file_ref
+        composition_packet = Path(composition_packet).resolve()
+        load_packet(composition_packet, plan_path)
+        # Validate grouping before creating output or invoking any model.
+        bundles(plan)
+        composition = {'packet': _file_ref(composition_packet), 'plan_sha256': _file_ref(plan_path)['sha256']}
     if out.exists(): raise ValueError('새 회차 실행 경로를 사용하세요. 기존 실행 기록은 보존합니다')
     out.mkdir(parents=True)
-    save(out/'plan.json', plan)
+    if composition is not None:
+        # Packet binding preserves raw source bytes, not a reserialized plan.
+        (out/'plan.json').write_bytes(plan_path.read_bytes())
+    else:
+        save(out/'plan.json', plan)
     from .evaluation import harness_fingerprint
     save(out/'provenance.json', {'model': model, 'mode': 'codex-prompt-pipeline',
         'humanizer': 'not_applied', 'expert_verified': False, 'harness': harness_fingerprint(),
@@ -88,22 +100,36 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
             f.write('\n\n회차 배정:\n'+json.dumps(group, ensure_ascii=False, indent=2))
             if editorial_context is not None:
                 f.write('\n\n회차 소재·구조 대조:\n'+json.dumps(editorial_context, ensure_ascii=False, indent=2))
-        jobs.append({'bundle': index, 'run': str(run.resolve()), 'slots': [s['number'] for s in group],
-                     'ids': [s['id'] for s in group], 'state': 'prepared'})
+        job = {'bundle': index, 'run': str(run.resolve()), 'slots': [s['number'] for s in group],
+               'ids': [s['id'] for s in group], 'state': 'prepared'}
+        if composition is not None:
+            from .composition_adapter import attach_bundle
+            job['composition'] = attach_bundle(run, plan_path=out/'plan.json', packet_path=composition_packet, slots=group)
+        jobs.append(job)
     manifest = {'exam': plan['exam'], 'subject': plan['subject'], 'total': len(plan['slots']), 'jobs': jobs,
                 'complete': False, 'human_approved': False}
+    if composition is not None:
+        manifest['composition'] = composition
     save(out/'production.json', manifest)
     def work(job):
         run = Path(job['run'])
         provider = CodexProvider(model, max_calls=3+3*max_revisions, timeout=1200, trace_dir=run/'codex-traces')
         try:
-            draft = run_pipeline(run, provider, max_revisions)
+            callbacks = {}
+            if composition is not None:
+                from .composition_adapter import pipeline_callbacks
+                callbacks = pipeline_callbacks(run, job['composition'])
+            draft = run_pipeline(run, provider, max_revisions, **callbacks)
             state = json.loads((run/'status.json').read_text())
             if [i.id for i in draft.items] != job['ids']:
                 state.update(state='needs_revision', errors=[*state.get('errors', []), '회차 배정 문항 ID·순서 불일치'])
                 save(run/'status.json', state)
             return {**job, 'state': state['state'], 'errors': state.get('errors', [])}
         except Exception as exc:
+            if composition is not None:
+                state = json.loads((run/'status.json').read_text())
+                state.update(state='failed', human_approved=False, error=f'{type(exc).__name__}: {exc}')
+                save(run/'status.json', state)
             return {**job, 'state': 'failed', 'error': f'{type(exc).__name__}: {exc}'}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         pending = {pool.submit(work, job): i for i, job in enumerate(jobs)}
@@ -117,14 +143,79 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra'):
 
 def assemble(out):
     out = Path(out).resolve()
-    plan, production = json.loads((out/'plan.json').read_text()), json.loads((out/'production.json').read_text())
+    previous = None
+    if (out/'assembled.json').exists():
+        try:
+            previous = json.loads((out/'assembled.json').read_text())
+        except (OSError, ValueError):
+            pass
+
+    def unready(message, production=None):
+        """Invalidate a prior success before any new composition inputs are read."""
+        result = {**(previous or {}), 'ready_for_human_review': False, 'human_approved': False,
+                  'layout_verified': False, 'delivery_ready': False, 'errors': [message]}
+        if production is not None:
+            result.setdefault('exam', production.get('exam'))
+            result.setdefault('subject', production.get('subject'))
+            result.setdefault('requested', production.get('total'))
+            result.setdefault('written', 0)
+            result.setdefault('items', [])
+            result.setdefault('item_runs', [])
+            result.setdefault('external_composition', {'inputs': production.get('composition'), 'quality_verified': False})
+        save(out/'assembled.json', result)
+        return result
+
+    was_composition = isinstance(previous, dict) and 'external_composition' in previous
+    if was_composition:
+        unready('composition 조립 입력 재검증 중')
+    try:
+        production = json.loads((out/'production.json').read_text())
+    except (OSError, ValueError) as exc:
+        if was_composition:
+            return unready(f'composition production 입력을 읽을 수 없습니다: {exc}')
+        raise
     lookup, errors = {}, []
+    composition_declared = 'composition' in production
+    if composition_declared:
+        unready('composition 조립 입력 재검증 중', production)
+    try:
+        plan = json.loads((out/'plan.json').read_text())
+    except (OSError, ValueError) as exc:
+        if composition_declared:
+            production['complete'] = False
+            save(out/'production.json', production)
+            return unready(f'composition plan 입력을 읽을 수 없습니다: {exc}', production)
+        raise
+    if composition_declared:
+        try:
+            from .composition_adapter import load_packet, _verify_ref
+            declaration = production['composition']
+            packet_path = _verify_ref(declaration['packet'], 'production packet')
+            if hashlib.sha256((out/'plan.json').read_bytes()).hexdigest() != declaration['plan_sha256']:
+                raise ValueError('composition production plan 해시 불일치')
+            load_packet(packet_path, out/'plan.json')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            errors.append(f'composition 회차 입력 검증 실패: {exc}')
     for job in production['jobs']:
         run = Path(job['run'])
         if not (run/'candidate.json').exists(): errors.append(f"미작성 묶음 {job['bundle']}"); continue
         candidate = run/'candidate.json'
-        draft = Draft.model_validate_json(candidate.read_text())
-        source_state = json.loads((run/'status.json').read_text())
+        try:
+            draft = Draft.model_validate_json(candidate.read_text())
+            source_state = json.loads((run/'status.json').read_text())
+        except (OSError, ValueError) as exc:
+            if composition_declared:
+                errors.append(f"composition 후보·검토 상태를 읽을 수 없습니다 묶음 {job['bundle']}: {exc}")
+                continue
+            raise
+        if composition_declared:
+            from .composition_adapter import assembly_errors
+            errors.extend(assembly_errors(run, job.get('composition'), draft, source_state))
+            if isinstance(job.get('composition'), dict) and job['composition'].get('packet') != production['composition'].get('packet'):
+                errors.append(f"composition 회차·묶음 packet 불일치 {job['bundle']}")
+        elif ('composition' in job or (run/'composition.json').exists()
+              or (run/'composition-binding.json').exists()):
+            errors.append(f"composition 회차 선언 누락 묶음 {job['bundle']}")
         if source_state.get('candidate_sha256') != hashlib.sha256(candidate.read_bytes()).hexdigest():
             errors.append(f"검토 버전 해시 불일치 묶음 {job['bundle']}")
         if [item.id for item in draft.items] != job['ids']:
@@ -171,9 +262,27 @@ def assemble(out):
         'composition_observations': composition_observations(plan, items),
         'ready_for_human_review': len(items) == len(plan['slots']) and not errors,
         'human_approved': False, 'layout_verified': False, 'delivery_ready': False}
-    save(out/'assembled.json', result)
+    if composition_declared:
+        from .composition_adapter import LIMITS
+        result['external_composition'] = {'inputs': production['composition'],
+            'validation_scope': '명시적 배정·세트·파일 해시·후보와 검토 입력 결속',
+            'quality_verified': False, 'semantic_compliance_verified': False, 'unavailable_checks': LIMITS}
+        if errors:
+            production['complete'] = False
+            save(out/'production.json', production)
     save(out/'exam-items.json', {'items': items})
-    render_exam(out, items, result)
+    if composition_declared:
+        try:
+            render_exam(out, items, result)
+        except Exception as exc:
+            result['errors'].append(f'composition 검토 뷰 출력 실패: {type(exc).__name__}: {exc}')
+            result['ready_for_human_review'] = False
+            production['complete'] = False
+            save(out/'production.json', production)
+        save(out/'assembled.json', result)
+    else:
+        save(out/'assembled.json', result)
+        render_exam(out, items, result)
     return result
 
 

@@ -20,6 +20,8 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     from .track_cli import add_parser
     add_parser(sub)
+    from .composition_cli import add_parser as add_composition_parser
+    add_composition_parser(sub)
     p = sub.add_parser("import", help="원본을 읽기 전용으로 색인")
     p.add_argument("paths", nargs="+", type=Path)
     p.add_argument("--refresh", action="store_true")
@@ -107,6 +109,7 @@ def main():
     p.add_argument("--limit", type=int, default=12)
     p = sub.add_parser("exam-build", help="배정표로 모의고사 전체 출제·독립 검토")
     p.add_argument("plan", type=Path)
+    p.add_argument("--composition-packet", type=Path, help="compose bind로 검증한 선택 회차 설계 패킷")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--workers", type=int, default=3)
     p.add_argument("--max-revisions", type=int, default=2)
@@ -201,6 +204,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == "compose":
+        from .composition_cli import dispatch as composition_dispatch
+        return composition_dispatch(a)
     if a.command == "track":
         from .track_cli import dispatch as track_dispatch
         return track_dispatch(a)
@@ -247,7 +253,8 @@ def dispatch(a):
     if a.command in {"exam-build", "exam-assemble"}:
         from .full_exam import build, assemble
         if a.command == "exam-assemble": return assemble(a.folder)
-        return build(a.plan, a.db, a.out, a.workers, a.max_revisions, a.model)
+        return build(a.plan, a.db, a.out, a.workers, a.max_revisions, a.model,
+                     composition_packet=a.composition_packet)
     if a.command == "audit-sources":
         from .source_audit import audit_sources
         result = audit_sources(team_files(a.directory), a.out)

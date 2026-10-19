@@ -71,7 +71,10 @@ class Track:
             "staged_legacy_generation_connected": self.name != "leet_reading",
             "staged_legacy_review_connected": self.name != "leet_reading",
             "typeset_connected": False,
-            "composition_available": False,
+            "composition_available": self.name != "leet_reading",
+            "composition_scope": "optional_40_slot_legacy_binding" if self.name != "leet_reading" else None,
+            "composition_grades": [5] if self.grades else [],
+            "composition_requires_local_profile": self.name != "leet_reading",
             "supported_figure_kinds": ["argument", "bar", "line"],
             "image_file_supported": False,
             "review_lexicon": "not_imported_not_applied" if self.name == "leet_reasoning" else "not_applicable",
@@ -80,6 +83,7 @@ class Track:
             "notes": ["generation_connected와 independent_review_connected는 native Block Draft 경로이며 아직 false입니다.",
                       "track attach/generate는 소재·설계 뒤 기존 Draft로 직접 작성·검토합니다. 기존 후보를 자동 변환하지 않습니다.",
                       "언어이해는 기존 파일럿 경로를 사용하며 staged 생성은 아직 지원하지 않습니다.",
+                      "compose는 외부 프로필의 40슬롯 형식·내용 제안입니다. PSAT은 5급만 연결하며 품질 개선을 뜻하지 않습니다.",
                       "기존 위키·누적 생성물 구조 검토·동결 평가 경로를 유지합니다."],
         }
 

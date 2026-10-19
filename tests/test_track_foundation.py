@@ -45,7 +45,8 @@ def test_registry_reports_unconnected_capabilities_without_private_resources():
         assert state["staged_legacy_generation_connected"] == (track.name != "leet_reading")
         assert state["staged_legacy_review_connected"] == (track.name != "leet_reading")
         assert not any(state[key] for key in ("generation_connected", "typeset_connected", "image_file_supported", "quality_improvement_verified"))
-        assert not state["composition_available"]
+        assert state["composition_available"] == (track.name != "leet_reading")
+        assert state["composition_requires_local_profile"] == (track.name != "leet_reading")
     assert get("leet_reasoning").status()["review_lexicon"] == "not_imported_not_applied"
     with pytest.raises(ValueError):
         get("../other")
