@@ -83,29 +83,59 @@ def recent_feedback(root, exam, subject):
 
 def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, initial_review=None,
                  revision_feedback=None, additional_validation=None, editorial_context=None,
-                 after_review_saved=None):
+                 after_review_saved=None, compact_reference_audit=False):
     """Review legacy drafts; optional checks run on every candidate revision.
 
     Additional context is editor-only. It is never sent to the blind solver.
     """
+    if type(compact_reference_audit) is not bool:
+        raise ValueError("compact_reference_audit must be bool")
     if not 0 <= max_revisions <= 3:
         raise ValueError("max_revisions must be 0–3")
     if (run / "draft-r0.json").exists():
         raise ValueError("이미 실행한 run입니다. 새 prepare로 이력을 보존하세요.")
     brief = Brief.model_validate_json((run / "brief.json").read_text())
-    context = json.loads((run / "context.json").read_text())
+    context_bytes = (run / "context.json").read_bytes()
+    context = json.loads(context_bytes)
     instructions = writer_prompt(brief)
     try:
         from .authoring_sources import supplied_source_ids
         allowed = supplied_source_ids(context)
         validate_revision_feedback(revision_feedback, initial_draft)
+        model_context = context
+        projection_folder = None
+        if compact_reference_audit:
+            from .authoring_projection import project_authoring_context
+            projection_folder = run / "authoring-inputs" / uuid4().hex
+            projection_folder.mkdir(parents=True, exist_ok=False)
+            archive = projection_folder / "original-context.json"
+            archive.write_bytes(context_bytes)
+            model_context, projection = project_authoring_context(
+                context, archive_path=archive,
+                archive_sha256=hashlib.sha256(context_bytes).hexdigest())
+            save(projection_folder / "projection-manifest.json", projection)
         editor_feedback_input = {"revision_feedback": revision_feedback} if revision_feedback is not None else {}
         feedback_input = editor_feedback_input if revision_feedback is not None and revision_feedback["application"] == "pending_revision" else {}
-        writer_context = context
+        writer_context = model_context
         if revision_feedback is not None and revision_feedback["application"] == "historical_review":
-            writer_context = deepcopy(context)
+            writer_context = deepcopy(model_context)
             if isinstance(writer_context.get("resume_lineage"), dict):
                 writer_context["resume_lineage"].pop("revision_feedback", None)
+        if projection_folder is not None:
+            save(projection_folder / "writer-context.json", writer_context)
+            save(projection_folder / "editor-exam-assignment.json", model_context.get("exam_assignment"))
+            names = ("original-context.json", "projection-manifest.json", "writer-context.json",
+                     "editor-exam-assignment.json")
+            save(projection_folder / "delivery-manifest.json", {
+                "schema_version": 1, "compact_reference_audit": True,
+                "original_context_path": str((run / "context.json").resolve()),
+                "files": {name: {"path": str((projection_folder / name).resolve()),
+                                  "sha256": hashlib.sha256((projection_folder / name).read_bytes()).hexdigest()}
+                          for name in names},
+                "scope": "writer generate/revise context and editor exam_assignment only",
+                "historical_feedback_removed_from_writer": revision_feedback is not None
+                    and revision_feedback["application"] == "historical_review",
+                "blind_input_changed": False})
         if revision_feedback is not None:
             save(run / "revision-feedback.json", revision_feedback)
             if feedback_input:
@@ -146,7 +176,7 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
                                        **({"editorial_plan": context["editorial_plan"]} if context.get("editorial_plan") else {}),
                                        **({"exam_editorial_context": context["exam_editorial_context"]} if context.get("exam_editorial_context") else {}),
                                        **({'exam_contract': context['exam_contract']} if context.get('exam_contract') else {}),
-                                       **({'exam_assignment': context['exam_assignment']} if context.get('exam_assignment') else {})}, EditorialReview)
+                                       **({'exam_assignment': model_context['exam_assignment']} if model_context.get('exam_assignment') else {})}, EditorialReview)
             supplied_source_ids(context)
             errors.extend(review_gate(draft, blind, editorial))
             review = {"revision": revision, "blind": blind.model_dump(), "editorial": editorial.model_dump(),

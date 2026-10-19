@@ -57,7 +57,10 @@ def seed_from(run):
     return read(path), read(review) if review.exists() else None, path
 
 
-def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', replacements=()):
+def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', replacements=(), *,
+           compact_reference_audit=False):
+    if type(compact_reference_audit) is not bool:
+        raise ValueError('compact_reference_audit must be bool')
     if not 1 <= workers <= 3 or not 0 <= max_revisions <= 3:
         raise ValueError('workers 1–3, max_revisions 0–3 범위를 사용하세요')
     previous, out = Path(previous).resolve(), Path(out).resolve()
@@ -67,7 +70,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
             (Path(job['run']) / 'composition-binding.json').exists() for job in production['jobs'])):
         from .composition_resume import resume_composition
         return resume_composition(previous, db, out, workers=workers, max_revisions=max_revisions,
-                                  model=model, replacements=replacements)
+                                  model=model, replacements=replacements,
+                                  **({'compact_reference_audit': True} if compact_reference_audit else {}))
     for replacement in replacements:
         replacement_production = read(replacement)
         if ('composition' in replacement_production or any('composition' in job or
@@ -91,7 +95,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
         'parent': str(previous), 'parent_manifest_sha256': sha(previous / 'production.json'),
         'replacement_manifests': [{'path': str(Path(p).resolve()), 'sha256': sha(p)} for p in replacements],
         'harness': harness_fingerprint(), 'max_revisions': max_revisions,
-        'humanizer': 'not_applied', 'expert_verified': False})
+        'humanizer': 'not_applied', 'expert_verified': False,
+        'compact_reference_audit': compact_reference_audit})
     jobs, seeds = [], {}
     corpus = Corpus(db)
     for source in selected:
@@ -164,7 +169,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                     save(run / 'inherited-review.json', review)
             provider = CodexProvider(model, max_calls=4+3*max_revisions, timeout=1200, trace_dir=run/'codex-traces')
             draft = run_pipeline(run, provider, max_revisions, initial_draft=seed, initial_review=review,
-                                 revision_feedback=revision_feedback)
+                                 revision_feedback=revision_feedback,
+                                 **({'compact_reference_audit': True} if compact_reference_audit else {}))
             state = read(run / 'status.json')
             if [i.id for i in draft.items] != job['ids']:
                 state.update(state='needs_revision', errors=[*state.get('errors', []), '회차 ID·순서 불일치'])

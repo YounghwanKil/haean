@@ -72,6 +72,8 @@ def main():
         if name == "generate":
             p.add_argument("--model", default="gpt-6-astra")
             p.add_argument("--max-revisions", type=int, default=2)
+            p.add_argument("--compact-reference-audit", action="store_true",
+                           help="검증 원문을 보존하고 writer/editor의 선택 참고 중복 감사 map만 축약")
     p = sub.add_parser("check", help="수동 작성본 검증 및 독립 검토 패킷 생성")
     p.add_argument("run", type=Path)
     p.add_argument("draft", type=Path)
@@ -127,6 +129,7 @@ def main():
     p = sub.add_parser("exam-build", help="배정표로 모의고사 전체 출제·독립 검토")
     p.add_argument("plan", type=Path)
     p.add_argument("--composition-packet", type=Path, help="compose bind로 검증한 선택 회차 설계 패킷")
+    p.add_argument("--compact-reference-audit", action="store_true")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--workers", type=int, default=3)
     p.add_argument("--max-revisions", type=int, default=2)
@@ -142,6 +145,8 @@ def main():
     p.add_argument("--workers", type=int, default=3)
     p.add_argument("--max-revisions", type=int, default=2)
     p.add_argument("--model", default="gpt-6-astra")
+    p.add_argument("--compact-reference-audit", action="store_true",
+                   help="이번 재개 호출에만 적용; 부모 실행 옵션을 자동 상속하지 않음")
     p = sub.add_parser("evaluate", help="고정 과제에서 Astra 출제·검토·평가 실행")
     p.add_argument("--suite", type=Path, default=Path("evals/pilot.json"))
     p.add_argument("--out", type=Path, required=True)
@@ -286,7 +291,8 @@ def dispatch(a):
         return getattr(wiki, a.operation)(a.root)
     if a.command == 'exam-resume':
         from .exam_resume import resume
-        return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement)
+        return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement,
+                      **({'compact_reference_audit': True} if a.compact_reference_audit else {}))
     if a.command == 'exam-ref-bind':
         from .exam_references import bind_exam_references
         plan = bind_exam_references(a.plan, a.index, a.selection, a.out)
@@ -300,7 +306,8 @@ def dispatch(a):
         from .full_exam import build, assemble
         if a.command == "exam-assemble": return assemble(a.folder)
         return build(a.plan, a.db, a.out, a.workers, a.max_revisions, a.model,
-                     composition_packet=a.composition_packet)
+                     composition_packet=a.composition_packet,
+                     **({'compact_reference_audit': True} if a.compact_reference_audit else {}))
     if a.command == "audit-sources":
         from .source_audit import audit_sources
         result = audit_sources(team_files(a.directory), a.out)
@@ -427,9 +434,13 @@ def dispatch(a):
         return result
     brief = Brief(**{k: getattr(a, k) for k in Brief.model_fields})
     run = prepare(corpus, brief, a.runs)
+    if a.command == "generate":
+        provenance = json.loads((run / "provenance.json").read_text())
+        save(run / "provenance.json", {**provenance, "compact_reference_audit": a.compact_reference_audit})
     provider = CodexProvider(a.model, trace_dir=run / "codex-traces") if a.command == "generate" else None
     if provider:
-        run_pipeline(run, provider, a.max_revisions)
+        run_pipeline(run, provider, a.max_revisions,
+                     **({'compact_reference_audit': True} if a.compact_reference_audit else {}))
         export_review(run)
     return {"run": str(run), "status": json.loads((run / "status.json").read_text())}
 

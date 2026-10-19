@@ -46,7 +46,10 @@ def brief_difficulty(group):
     return next(iter(levels)) if len(levels) == 1 and levels <= {'하', '중', '상'} else '중'
 
 
-def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *, composition_packet=None):
+def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *, composition_packet=None,
+          compact_reference_audit=False):
+    if type(compact_reference_audit) is not bool:
+        raise ValueError('compact_reference_audit must be bool')
     if not 1 <= workers <= 3: raise ValueError('동시 출제 묶음은 1–3개')
     plan_path, out = Path(plan_path), Path(out)
     plan = load_plan(plan_path)
@@ -72,7 +75,8 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *
     from .evaluation import harness_fingerprint
     save(out/'provenance.json', {'model': model, 'mode': 'codex-prompt-pipeline',
         'humanizer': 'not_applied', 'expert_verified': False, 'harness': harness_fingerprint(),
-        'plan_sha256': hashlib.sha256(plan_path.read_bytes()).hexdigest(), 'max_revisions': max_revisions})
+        'plan_sha256': hashlib.sha256(plan_path.read_bytes()).hexdigest(), 'max_revisions': max_revisions,
+        'compact_reference_audit': compact_reference_audit})
     jobs = []
     corpus = Corpus(db)
     for index, group in enumerate(bundles(plan), 1):
@@ -125,6 +129,8 @@ def build(plan_path, db, out, workers=3, max_revisions=2, model='gpt-6-astra', *
             if composition is not None:
                 from .composition_adapter import pipeline_callbacks
                 callbacks = pipeline_callbacks(run, job['composition'])
+            if compact_reference_audit:
+                callbacks['compact_reference_audit'] = True
             draft = run_pipeline(run, provider, max_revisions, **callbacks)
             state = json.loads((run/'status.json').read_text())
             if [i.id for i in draft.items] != job['ids']:

@@ -207,7 +207,10 @@ def preflight(previous):
         raise ValueError(f"composition 재개 입력 불완전: {exc}") from exc
 
 
-def resume_composition(previous, db, out, *, workers, max_revisions, model, replacements=()):
+def resume_composition(previous, db, out, *, workers, max_revisions, model, replacements=(),
+                       compact_reference_audit=False):
+    if type(compact_reference_audit) is not bool:
+        raise ValueError("compact_reference_audit must be bool")
     if replacements:
         raise ValueError("composition 재개는 대체 묶음 replacements를 지원하지 않습니다")
     original_inputs = preflight(previous)
@@ -221,7 +224,8 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
     save(out / "provenance.json", {"mode": "resumed-composition-production", "model": model,
          "parent": str(previous), "parent_manifest_sha256": adapter._sha(previous / "production.json"),
          "plan_sha256": declaration["plan_sha256"], "harness": harness_fingerprint(),
-         "max_revisions": max_revisions, "humanizer": "not_applied", "expert_verified": False})
+         "max_revisions": max_revisions, "humanizer": "not_applied", "expert_verified": False,
+         "compact_reference_audit": compact_reference_audit})
     jobs, seeds = [], {}
     corpus = Corpus(db) if any(not entry["ready"] for entry in entries) else None
     for entry in entries:
@@ -278,6 +282,8 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
                 return original_after_review(path, review)
 
             callbacks.update(additional_validation=validate, after_review_saved=after_review)
+            if compact_reference_audit:
+                callbacks["compact_reference_audit"] = True
             verify_parent()
             provider = CodexProvider(model, max_calls=4 + 3 * max_revisions, timeout=1200, trace_dir=run / "codex-traces")
             seed, review, revision_feedback = seeds[str(run)]
