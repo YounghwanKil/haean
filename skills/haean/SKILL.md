@@ -23,6 +23,7 @@ description: 팀 해안의 LEET 추리논증·PSAT 5급/7급 출제·검토·모
 | 평가·하네스 개선 | `../haean-evolve/SKILL.md` | haean_optimizer |
 | 자유로운 검토 의견·텍스트 피드백 | `feedback`, `feedback-note`, `../haean-evolve/SKILL.md` | 총괄 기록 후 haean_optimizer |
 | 자료 찾기·정리·지식 축적 | `../haean-wiki/SKILL.md`, 로컬 `search`, `status`, `import` | 총괄 / haean_researcher |
+| 이 프로젝트의 과거 세션·결정·남은 요청 정리 | `../haean-wiki/SKILL.md`의 세션 회고 | 총괄 / 조사 담당 |
 
 맥락에 있는 급수·과목·수량은 다시 묻지 않는다. 필수 정보가 없으면 그 정보만 확인한다. 단일 문항 요청에는 회차 전체 계획을 강요하지 않는다. 대량 요청은 먼저 슬롯을 만들고 1~4문항 또는 2문항 공통지문 세트 단위로 진행한다.
 
