@@ -35,6 +35,24 @@ class CodexProvider:
         self.trace_dir = Path(trace_dir) if trace_dir else None
         if self.trace_dir: self.trace_dir.mkdir(parents=True, exist_ok=True)
 
+    def reserve_trace_prefix(self, stage):
+        number = self.calls
+        while True:
+            prefix = f"{number:02}-{stage}"
+            if not self.trace_dir:
+                return prefix
+            # A new provider starts its call budget at zero, but must not
+            # overwrite evidence from an earlier invocation in this run.
+            if any(self.trace_dir.glob(f"{prefix}.*")):
+                number += 1
+                continue
+            try:
+                with (self.trace_dir / f"{prefix}.reserved").open("x") as marker:
+                    marker.write("Reserved for one Codex invocation.\n")
+                return prefix
+            except FileExistsError:
+                number += 1
+
     def call(self, stage, instructions, payload, schema):
         if self.calls >= self.max_calls: raise RuntimeError("Codex 세션 실행 한도에 도달했습니다")
         self.calls += 1
@@ -42,7 +60,7 @@ class CodexProvider:
             root = Path(folder)
             schema_path, output = root / "schema.json", root / "result.json"
             schema_path.write_text(json.dumps(strict_schema(schema.model_json_schema()), ensure_ascii=False))
-            prefix = f"{self.calls:02}-{stage}"
+            prefix = self.reserve_trace_prefix(stage)
             images, image_manifest = [], []
             if self.visual_inputs:
                 from .visual_review import review_images, IMAGE_INSTRUCTIONS
@@ -86,8 +104,8 @@ class CodexProvider:
                                    'usage':None,'returncode':None,'timed_out':True})
                 raise
             if self.trace_dir:
-                (self.trace_dir / f"{self.calls:02}-{stage}.jsonl").write_text(result.stdout)
-                (self.trace_dir / f"{self.calls:02}-{stage}.stderr.txt").write_text(result.stderr)
+                (self.trace_dir / f"{prefix}.jsonl").write_text(result.stdout)
+                (self.trace_dir / f"{prefix}.stderr.txt").write_text(result.stderr)
             events = []
             for line in result.stdout.splitlines():
                 try: events.append(json.loads(line))

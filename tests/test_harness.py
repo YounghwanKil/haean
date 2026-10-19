@@ -79,6 +79,36 @@ def test_strict_output_schema():
     assert "additionalProperties" not in original
 
 
+def test_restarted_provider_preserves_prior_and_failed_traces(monkeypatch, tmp_path):
+    monkeypatch.setattr('haean.codex_runtime.shutil.which', lambda _: '/codex')
+    # Legacy traces have no reservation marker.
+    prior = {'01-blind.input.json': '{"legacy":true}',
+             '01-blind.jsonl': 'original output', '01-blind.stderr.txt': 'original stderr'}
+    for name, value in prior.items():
+        (tmp_path / name).write_text(value)
+    executions = []
+    def run(command, **kwargs):
+        if command[1] == 'login':
+            return SimpleNamespace(returncode=0, stdout='ChatGPT', stderr='')
+        executions.append(command)
+        if len(executions) == 1:
+            return SimpleNamespace(returncode=1, stdout='', stderr='startup denied')
+        Path(command[command.index('-o') + 1]).write_text('{"status":"ready"}')
+        return SimpleNamespace(returncode=0, stdout='{"type":"turn.completed","usage":{"output_tokens":3}}', stderr='')
+    monkeypatch.setattr('haean.codex_runtime.subprocess.run', run)
+    class Result(StrictModel): status: str
+    with pytest.raises(RuntimeError, match='exit=1'):
+        CodexProvider(trace_dir=tmp_path, max_calls=1).call('blind', 'solve', {'attempt': 1}, Result)
+    fresh = CodexProvider(trace_dir=tmp_path, max_calls=1)
+    assert fresh.call('blind', 'solve', {'attempt': 2}, Result).status == 'ready'
+    assert fresh.calls == 1
+    assert all((tmp_path / name).read_text() == value for name, value in prior.items())
+    assert (tmp_path / '02-blind.stderr.txt').read_text() == 'startup denied'
+    assert json.loads((tmp_path / '02-blind.input.json').read_text())['payload'] == {'attempt': 1}
+    assert json.loads((tmp_path / '03-blind.input.json').read_text())['payload'] == {'attempt': 2}
+    assert 'turn.completed' in (tmp_path / '03-blind.jsonl').read_text()
+
+
 def result_set():
     return {"suite":"pilot-v1","split":"pilot","model":"gpt-6-astra","repeats":1,"max_revisions":1,
             "mode":"test","humanizer":"not_applied","frozen":{"rubric":"same"},"complete":True,
