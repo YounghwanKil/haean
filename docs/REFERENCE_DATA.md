@@ -68,6 +68,8 @@ haean tools track ref-build data/reference-curated-01/refs.jsonl \
 
 `ref-curate`는 분류를 자동 추론하는 명령이 아니다. 원문을 읽어 만든 분류 manifest를 검증하고 별도 새 자료에 연결한다. v1은 공식 정답 근거가 있는 PSAT 전사를 입력받으며, 이미 분류 근거를 붙인 자료에 다시 덧붙이지 않는다. 재분류할 때는 같은 원본 refs와 새 manifest·출력 경로를 사용한다.
 
+출처의 연도·급수별 라벨과 생성 프로필의 분류 체계를 구분한다. 두 기준이 다르면 각각의 근거를 남기고, 같은 발문 표현만으로 다른 문항을 재분류하지 않는다. 해당 문항의 실제 판단 과제와 원본 근거를 확인한 뒤 필요한 분류만 별도 버전으로 보강한다.
+
 manifest는 `schema_version=1`, `usage=development`, 작성 주체 `origin`(model/human), 실제 `actual_model`(모르면 명시적으로 `null`), 그에 맞는 `status`를 기록한다. 모델 상태는 `source_grounded_model_curation`, 사람 상태는 `source_grounded_human_curation`이다. `human_approved=false`, `semantic_accuracy_verified=false`는 그대로 유지한다. 사람 작성이라고 적었다는 사실만으로 전문가 승인이 되지는 않는다.
 
 각 `records` 행에는 `id`, 원본 행 객체의 `source_record_sha256`, 수정할 `fields`를 둔다. 해시는 원래 JSONL 행 객체를 `json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')`로 직렬화한 SHA256이다. 허용 필드는 `area/item_type/item_format/discourse/stem_type`이며, 각 필드는 `value`, `rationale`, 하나 이상의 `evidence`를 갖는다. 근거의 `pointer`는 `json.loads(ref.text)` 내부의 문자열을 가리키는 JSON Pointer이고 `quote`는 그 문자열에 실제로 존재하는 인용이다. 각 필드에는 `발문·지문·보기·표·선지` 안의 문자열을 인용한 근거가 최소 하나 필요하다. 잠정 유형·검증 상태 같은 메타정보만으로 분류를 보강할 수 없다. 입력 refs와 manifest의 ID 집합은 같아야 한다. 세부 예제는 [합성 테스트](../tests/test_reference_curation.py)를 따른다.
