@@ -51,6 +51,48 @@ def test_invalid_doctor_option_does_not_fall_through_to_codex(monkeypatch):
         module.main()
 
 
+@pytest.mark.parametrize("arguments", [
+    ["--madmax", "--help"], ["--help", "--madmax"],
+    ["--madmax", "setup", "--help"], ["--madmax", "status", "--help"],
+    ["--madmax", "doctor", "--help"], ["skill", "psat", "--help"],
+])
+def test_global_madmax_with_help_never_probes_or_starts_codex(arguments, monkeypatch, capsys):
+    module = load("launch")
+    monkeypatch.setattr(sys, "argv", ["haean", *arguments])
+    monkeypatch.setattr(module, "installation_state", lambda: pytest.fail("help must not probe installation"))
+    monkeypatch.setattr(module.shutil, "which", lambda *a: pytest.fail("help must not find Codex"))
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **kw: pytest.fail("help must not start a subprocess"))
+    assert module.main() == 0
+    assert capsys.readouterr().out
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--unknown"], ["--madmax", "--unknown"], ["작업 요청", "--unknown"],
+    ["setup", "--unknown"], ["banner", "--unknown"], ["hud", "--unknown"],
+    ["status", "--unknown"], ["setup-figures", "--unknown"],
+    ["setup-layout", "--unknown"], ["setup-typeset", "--unknown"],
+    ["skills", "--unknown"], ["skill", "psat", "--unknown"],
+    ["track-exam", "--unknown"], ["--version", "--unknown"],
+])
+def test_invalid_options_fail_before_installation_login_or_model(arguments, monkeypatch):
+    module = load("launch")
+    monkeypatch.setattr(sys, "argv", ["haean", *arguments])
+    monkeypatch.setattr(module, "installation_state", lambda: pytest.fail("invalid arguments must fail first"))
+    monkeypatch.setattr(module.shutil, "which", lambda *a: pytest.fail("invalid arguments must not find Codex"))
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **kw: pytest.fail("invalid arguments must not start a subprocess"))
+    with pytest.raises(ValueError, match="사용법|알 수 없는"):
+        module.main()
+
+
+def test_global_options_leave_delegated_and_literal_arguments_untouched():
+    module = load("launch")
+    assert module.launcher_arguments(["--madmax", "tools", "search", "--madmax"])[0] == ["tools", "search", "--madmax"]
+    assert module.launcher_arguments(["typeset", "--unknown"])[0] == ["typeset", "--unknown"]
+    args, madmax = module.launcher_arguments(["--", "--madmax", "--unknown"])
+    assert not madmax
+    assert module.request_arguments(args) == ["--madmax", "--unknown"]
+
+
 def test_install_conflict_and_uninstall_preserve_unrelated_files(tmp_path, monkeypatch):
     module = load("install")
     root, bin_dir = tmp_path / "repo", tmp_path / "bin"
@@ -76,6 +118,137 @@ def test_wrapper_runs_from_other_cwd_with_spaces_and_is_reversible(tmp_path, mon
     assert result.stdout.strip() == "two words|$(no shell expansion)"
     module.install(root, bin_dir, Path(sys.executable), uninstall=True)
     assert not (bin_dir / "haean").exists() and (data / "keep.txt").read_text() == "private fixture"
+
+
+def test_install_shows_path_fix_before_examples_and_absolute_command(tmp_path, monkeypatch, capsys):
+    import shlex
+    module = load("install")
+    root, bin_dir = tmp_path / "repo", tmp_path / "bin with spaces"
+    root.mkdir()
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: None)
+    module.install(root, bin_dir, Path(sys.executable))
+    output = capsys.readouterr().out
+    assert output.index("export PATH=") < output.index("  haean --help")
+    assert f"{shlex.quote(str(bin_dir / 'haean'))} --help" in output
+
+
+@pytest.mark.parametrize("failure", ["packages", "skill_link", "humanizer_link", "revision"])
+def test_partial_install_never_reaches_login_or_model(tmp_path, monkeypatch, failure):
+    import venv
+    module = load("launch")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    source = tmp_path / "skills/haean"
+    source.mkdir(parents=True)
+    (source / "SKILL.md").write_text("fixture")
+    links = tmp_path / ".agents/skills"
+    links.mkdir(parents=True)
+    (links / "haean").symlink_to(source)
+    humanizer = tmp_path / "vendor/im-not-ai/codex/skills/humanize-korean"
+    humanizer.mkdir(parents=True)
+    (humanizer / "SKILL.md").write_text("fixture")
+    (links / "humanize-korean").symlink_to(humanizer)
+    monkeypatch.setattr(module, "humanizer_state", lambda: {"state": "mismatch" if failure == "revision" else "pinned"})
+    if failure == "packages":
+        # A real empty virtualenv reproduces interrupted pip installation even though
+        # its Python and the visible skill files all exist.
+        venv.EnvBuilder(with_pip=False).create(tmp_path / ".venv")
+    else:
+        monkeypatch.setattr(module, "installed_imports", lambda modules: True)
+    if failure == "skill_link":
+        (links / "haean").unlink()
+    if failure == "humanizer_link":
+        (links / "humanize-korean").unlink()
+        (links / "humanize-korean").mkdir()
+        (links / "humanize-korean/SKILL.md").write_text("unrelated skill")
+    monkeypatch.setattr(module.shutil, "which", lambda *a: pytest.fail("partial install must fail before Codex/login"))
+    monkeypatch.setattr(sys, "argv", ["haean", "문항을 검토해줘"])
+    with pytest.raises(ValueError, match="haean setup"):
+        module.main()
+
+
+def test_setup_recovers_missing_pip_without_removing_existing_venv(tmp_path, monkeypatch):
+    import venv
+    from types import SimpleNamespace
+    module = load("launch")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    (tmp_path / "skills").mkdir()
+    humanizer = tmp_path / "vendor/im-not-ai/codex/skills/humanize-korean"
+    humanizer.mkdir(parents=True)
+    (humanizer / "SKILL.md").write_text("fixture")
+    monkeypatch.setattr(module, "ensure_humanizer", lambda: {"state": "pinned"})
+    venv.EnvBuilder(with_pip=False).create(tmp_path / ".venv")
+    marker = tmp_path / ".venv/existing-package-marker"
+    marker.write_text("preserve")
+    real_run = subprocess.run
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[1:4] == ["-m", "pip", "install"]:
+            # Keep dependency downloads out of this bootstrap regression test.
+            return SimpleNamespace(returncode=0)
+        return real_run(command, **kwargs)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module.setup()
+    module.setup()
+    python = str(tmp_path / ".venv/bin/python")
+    assert calls.count([python, "-m", "ensurepip", "--upgrade"]) == 1
+    assert calls.count([python, "-m", "pip", "install", "-e", ".[dev]"]) == 2
+    assert marker.read_text() == "preserve"
+    assert real_run([python, "-m", "pip", "--version"], capture_output=True).returncode == 0
+
+
+def test_pip_repair_refuses_python_outside_project_venv(tmp_path, monkeypatch):
+    module = load("launch")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    python = tmp_path / ".venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to(sys._base_executable)
+    real_run = subprocess.run
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        return real_run(command, **kwargs)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    with pytest.raises(ValueError, match="패키지 설치를 중단"):
+        module.ensure_project_pip(python)
+    assert all("pip" not in command and "ensurepip" not in command for command in calls)
+
+
+def test_failed_pip_repair_preserves_environment_and_explains_recovery(tmp_path, monkeypatch):
+    import venv
+    module = load("launch")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    venv.EnvBuilder(with_pip=False).create(tmp_path / ".venv")
+    python = tmp_path / ".venv/bin/python"
+    real_run = subprocess.run
+    def run(command, **kwargs):
+        if "ensurepip" in command:
+            raise subprocess.CalledProcessError(1, command)
+        return real_run(command, **kwargs)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    with pytest.raises(ValueError, match="pip를 복구하지 못했습니다.*기존 .venv는 보존"):
+        module.ensure_project_pip(python)
+    assert python.is_file()
+
+
+def test_recovery_commands_work_from_another_directory_with_spaces(tmp_path, monkeypatch, capsys):
+    import json
+    import shlex
+    module = load("launch")
+    root = tmp_path / "repo with spaces"
+    root.mkdir()
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module.shutil, "which", lambda *a: None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["haean", "작업 요청"])
+    with pytest.raises(ValueError) as error:
+        module.main()
+    for command in ("setup", "doctor"):
+        assert shlex.join([str(root / "haean"), command]) in str(error.value)
+    module.doctor()
+    result = json.loads(capsys.readouterr().out)
+    assert any(shlex.join([str(root / "haean"), "setup"]) in action for action in result["next_actions"])
 
 
 def test_status_does_not_count_assembled_views_as_new_reviews(tmp_path, monkeypatch, capsys):

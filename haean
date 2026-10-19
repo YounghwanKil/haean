@@ -1,4 +1,15 @@
 #!/bin/sh
 set -eu
 HAEAN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec python3 "$HAEAN_ROOT/scripts/launch.py" "$@"
+if [ -n "${HAEAN_PYTHON:-}" ]; then
+  HAEAN_RUNTIME=$HAEAN_PYTHON
+elif [ -x "$HAEAN_ROOT/.venv/bin/python" ]; then
+  HAEAN_RUNTIME=$HAEAN_ROOT/.venv/bin/python
+else
+  HAEAN_RUNTIME=python3
+fi
+if ! "$HAEAN_RUNTIME" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+  printf '%s\n' 'Python 3.11 이상이 필요합니다. 설치 후 HAEAN_PYTHON=python3.13 ./haean setup 으로 지정할 수 있습니다.' >&2
+  exit 2
+fi
+exec "$HAEAN_RUNTIME" "$HAEAN_ROOT/scripts/launch.py" "$@"

@@ -31,11 +31,13 @@ def install(root, bin_dir, python, *, uninstall=False):
         # Exclusive creation protects a launcher installed concurrently.
         with target.open("x") as stream: stream.write(content)
     target.chmod(0o755)
-    print(f"\n설치 완료: {target}\n  haean --help\n  haean doctor\n  haean \"LEET 문항 2개를 만들고 검토해줘\"")
+    print(f"\n설치 완료: {target}")
     path_dirs = [Path(p).expanduser().absolute() for p in os.environ.get("PATH", "").split(os.pathsep) if p]
     if bin_dir not in path_dirs:
         print(f"\n현재 PATH에 설치 폴더가 없습니다. 이번 터미널에서 실행:\nexport PATH={shlex.quote(str(bin_dir))}:\"$PATH\"")
         print("계속 사용하려면 위 줄을 사용하는 셸 설정에 추가하세요. 설치기는 셸 설정을 수정하지 않습니다.")
+    print(f"\nPATH 설정 없이 바로 실행:\n  {shlex.quote(str(target))} --help")
+    print('\n명령 예시:\n  haean --help\n  haean doctor\n  haean "LEET 문항 2개를 만들고 검토해줘"')
 
 
 def main():

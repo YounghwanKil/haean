@@ -10,12 +10,16 @@
 git clone https://github.com/YounghwanKil/haean.git
 cd haean
 ./install.sh
-haean doctor
+./haean doctor --check
 ```
+
+저장소 안에서는 `./haean --madmax`로 바로 시작합니다. 어느 폴더에서든 `haean`으로 실행하려면 설치기가 안내한 PATH를 적용하세요. 기본 설치 위치는 `~/.local/bin`이며 현재 터미널에서는 `export PATH="$HOME/.local/bin:$PATH"`로 연결합니다.
 
 물결 로고가 있는 파란 하단 HUD까지 사용하려면 tmux를 설치합니다: macOS `brew install tmux`, Debian/Ubuntu `sudo apt install tmux`. `haean hud`로 설치·비활성화·기존 tmux 여부를 확인할 수 있습니다. HUD는 Codex 기본 상태줄 바로 아래의 **별도 고정 줄**이며 터미널의 일반 본문 복사에는 포함되지 않을 수 있습니다.
 
 Python 3.11+, Git, Codex CLI가 필요합니다. `codex login`으로 ChatGPT 로그인합니다. `setup`은 프로젝트 안에 스킬 링크·Python 가상환경을 설치하고, 고정된 im-not-ai submodule을 가져옵니다. 전역 Codex 설정·계정 인증·권한을 덮어쓰지 않습니다. 현재 런처는 macOS/Linux용입니다.
+
+Python을 지정해야 한다면 `HAEAN_PYTHON=python3.13 ./install.sh`처럼 설치합니다. 이후 `./haean`은 설치된 가상환경의 Python을 사용하며, 명시한 `HAEAN_PYTHON`이 있으면 그 값을 우선합니다. 업데이트 후에도 `./install.sh`를 다시 실행해 도구와 실행 명령을 맞춥니다.
 
 Codex 앱에서 이 프로젝트를 열고 자연어로 요청하거나, 터미널에서 다음처럼 시작하세요. `$haean`은 총괄을 명시하고 싶을 때 붙이는 선택사항입니다.
 

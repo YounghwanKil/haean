@@ -53,6 +53,60 @@ def test_tmux_server_is_isolated_and_cleaned_when_attach_fails(monkeypatch, tmp_
     assert all(prompt not in ' '.join(c) for c in calls)
 
 
+@pytest.mark.parametrize(('child_returncode', 'attach_returncode', 'expected'), [
+    (7, 0, 7),
+    (None, 0, 130),
+    (None, 1, 1),
+])
+def test_tmux_client_cleanup_preserves_exit_status(
+        monkeypatch, tmp_path, child_returncode, attach_returncode, expected):
+    ui = load()
+    calls = []
+    packet = None
+
+    def fake_run(argv, **kwargs):
+        nonlocal packet
+        calls.append(argv)
+        if 'new-session' in argv:
+            import shlex
+            packet = Path(shlex.split(argv[-1])[-1])
+        if 'set-hook' in argv:
+            assert not packet.with_name('ready').exists()
+        if 'attach-session' in argv:
+            # Closing the terminal may bypass launcher cleanup. Install the
+            # server-owned cleanup before starting the client or its child.
+            assert any(c[5:] == ['set-hook', '-g', 'client-detached', 'kill-server']
+                       for c in calls[:-1])
+            assert packet.with_name('ready').exists()
+            if child_returncode is not None:
+                packet.with_name('exit.json').write_text(
+                    json.dumps({'returncode': child_returncode}))
+            return SimpleNamespace(returncode=attach_returncode)
+        return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+    monkeypatch.setattr(ui.subprocess, 'run', fake_run)
+    assert ui.run_tmux('tmux', ['synthetic-child'], {}, tmp_path, False, 'haean') == expected
+    assert calls[-1][5:] == ['kill-server']
+    assert all(c[:5] == calls[0][:5] for c in calls)
+
+
+def test_tmux_does_not_attach_without_disconnect_cleanup(monkeypatch, tmp_path):
+    ui = load()
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        if 'set-hook' in argv:
+            raise ui.subprocess.CalledProcessError(1, argv)
+        return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+    monkeypatch.setattr(ui.subprocess, 'run', fake_run)
+    with pytest.raises(ui.subprocess.CalledProcessError):
+        ui.run_tmux('tmux', ['synthetic-child'], {}, tmp_path, False, 'haean')
+    assert not any('attach-session' in c for c in calls)
+    assert calls[-1][5:] == ['kill-server']
+
+
 def test_hud_explains_missing_and_disabled_states(monkeypatch):
     ui = load()
     monkeypatch.setattr(ui.shutil, 'which', lambda _: None)

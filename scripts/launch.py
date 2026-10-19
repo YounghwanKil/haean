@@ -4,6 +4,7 @@ import json
 import hashlib
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_ITEMS = ["model-with-reasoning", "current-dir", "context-remaining", "five-hour-limit", "weekly-limit"]
+
+
+def repository_command(*arguments):
+    return shlex.join([str(ROOT / "haean"), *arguments])
 
 
 def banner(madmax=False, *, large=False, skill="haean"):
@@ -87,12 +92,22 @@ def show_skills(name=None):
     return 0
 
 
-def codex_command(codex, task, madmax=False, skill="haean"):
+def codex_command(codex, task, madmax=False, skill="haean", *, no_daemon=False):
     command = [codex, "--no-alt-screen", "-C", str(ROOT), "-m", "gpt-6-astra",
                "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS)]
     if madmax:
         command.append("--dangerously-bypass-approvals-and-sandbox")
+    if no_daemon:
+        command.append("--no-daemon")
     return command + ["$" + skill + " " + task]
+
+
+def codex_supports_no_daemon(codex):
+    try:
+        help_result = subprocess.run([codex, "--help"], capture_output=True, text=True, timeout=10)
+        return help_result.returncode == 0 and "--no-daemon" in help_result.stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def help_text():
@@ -300,6 +315,34 @@ def ensure_humanizer():
     return state
 
 
+def ensure_project_pip(python):
+    """Repair interrupted pip bootstrap only after verifying the project venv."""
+    recovery = (f"기존 .venv는 보존했습니다. Python 3.11 이상의 venv·ensurepip 지원을 확인하고 "
+                f"{repository_command('setup')} 을 다시 실행하세요. 복구가 계속 실패하면 "
+                ".venv를 별도 이름으로 보관한 뒤 setup으로 새 가상환경을 만드세요.")
+    try:
+        probe = subprocess.run(
+            [str(python), "-c", "import json, sys; print(json.dumps([sys.prefix, sys.base_prefix, list(sys.version_info[:2])]))"],
+            cwd=ROOT, capture_output=True, text=True, check=True, timeout=10)
+        prefix, base_prefix, version = json.loads(probe.stdout)
+        local = (Path(prefix).resolve() == (ROOT / ".venv").resolve()
+                 and Path(prefix).resolve() != Path(base_prefix).resolve()
+                 and tuple(version) >= (3, 11))
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        local = False
+    if not local:
+        raise ValueError("저장소 .venv의 Python 3.11 이상 가상환경인지 확인할 수 없어 패키지 설치를 중단했습니다. " + recovery)
+    try:
+        pip = subprocess.run([str(python), "-m", "pip", "--version"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=10)
+        if pip.returncode:
+            subprocess.run([str(python), "-m", "ensurepip", "--upgrade"], cwd=ROOT, check=True)
+            subprocess.run([str(python), "-m", "pip", "--version"], cwd=ROOT,
+                           capture_output=True, text=True, check=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError("가상환경의 pip를 복구하지 못했습니다. " + recovery) from exc
+
+
 def setup():
     if sys.version_info < (3, 11):
         raise ValueError("Python 3.11 이상이 필요합니다")
@@ -314,6 +357,7 @@ def setup():
     python = ROOT / ".venv/bin/python"
     if not python.exists():
         subprocess.run([sys.executable, "-m", "venv", str(ROOT / ".venv")], check=True)
+    ensure_project_pip(python)
     subprocess.run([str(python), "-m", "pip", "install", "-e", ".[dev]"], cwd=ROOT, check=True)
     print("해안 스킬·역할·로컬 도구 설치 완료. Codex에서 이 폴더를 다시 열고 자연어로 요청하세요. $haean 명시는 선택사항입니다.")
 
@@ -333,12 +377,46 @@ def source_status():
         return {"records": None, "state": "unreadable", "note": "원본을 보존하고 DB 경로·스키마를 확인하세요."}
 
 
-def doctor(strict=False):
+def installed_imports(modules):
+    """Probe the project environment without loading optional tools or credentials."""
+    python = ROOT / ".venv/bin/python"
+    if not python.is_file():
+        return False
+    try:
+        result = subprocess.run([str(python), "-c", "import " + ", ".join(modules)],
+                                cwd=ROOT, capture_output=True, text=True, timeout=10)
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def installation_state():
+    """Share the essential local readiness checks with doctor and session startup."""
     skills = []
-    for source in sorted((ROOT / "skills").iterdir()):
-        if (source / "SKILL.md").exists():
+    for source in sorted((ROOT / "skills").glob("*")):
+        if (source / "SKILL.md").is_file():
             target = ROOT / ".agents/skills" / source.name
-            skills.append({"name": source.name, "discovered": target.exists() and target.resolve() == source.resolve()})
+            skills.append({"name": source.name, "discovered": (target / "SKILL.md").is_file()
+                           and target.resolve() == source.resolve()})
+    tools_ready = installed_imports(["haean.cli", "pydantic", "openpyxl", "olefile"])
+    humanizer_revision = humanizer_state()
+    source = ROOT / "vendor/im-not-ai/codex/skills/humanize-korean"
+    target = ROOT / ".agents/skills/humanize-korean"
+    humanizer = ((target / "SKILL.md").is_file() and target.resolve() == source.resolve()
+                 and humanizer_revision["state"] == "pinned")
+    return {"skills": skills, "tools_installed": tools_ready, "humanizer": humanizer,
+            "humanizer_revision": humanizer_revision,
+            "ready": bool(tools_ready and humanizer and skills
+                          and all(skill["discovered"] for skill in skills)
+                          and any(skill["name"] == "haean" for skill in skills))}
+
+
+def doctor(strict=False):
+    installation = installation_state()
+    skills = installation["skills"]
+    tools_ready = installation["tools_installed"]
+    humanizer_revision = installation["humanizer_revision"]
+    humanizer = installation["humanizer"]
     roles = []
     for file in sorted((ROOT / ".codex/agents").glob("*.toml")):
         role = tomllib.loads(file.read_text())
@@ -346,16 +424,8 @@ def doctor(strict=False):
     codex = shutil.which("codex")
     auth = subprocess.run([codex, "login", "status"], capture_output=True, text=True, timeout=10) if codex else None
     logged_in = bool(auth and auth.returncode == 0 and "ChatGPT" in auth.stdout + auth.stderr)
-    python = ROOT / ".venv/bin/python"
-    dependencies = subprocess.run([str(python), "-c", "import haean, pydantic, openpyxl, olefile"],
-                                  cwd=ROOT, capture_output=True, text=True, timeout=10) if python.exists() else None
-    tools_ready = bool(dependencies and dependencies.returncode == 0)
-    humanizer_revision = humanizer_state()
-    humanizer = (ROOT / ".agents/skills/humanize-korean/SKILL.md").exists() and humanizer_revision["state"] == "pinned"
     sources = source_status()
-    figures = subprocess.run([str(python), "-c", "import matplotlib, PIL"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=10) if python.exists() else None
-    figures_ready = bool(figures and figures.returncode == 0)
+    figures_ready = installed_imports(["matplotlib", "PIL"])
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from terminal_ui import hud_status
     hud = hud_status()
@@ -368,16 +438,15 @@ def doctor(strict=False):
         actions.append("기존 tmux 안에서는 별도 해안 HUD를 추가하지 않습니다. 새 일반 터미널에서 haean을 실행하세요.")
     if not codex: actions.append("Codex CLI를 설치하세요: https://learn.chatgpt.com/docs/cli")
     elif not logged_in: actions.append("codex login 으로 ChatGPT 구독 계정에 로그인하세요.")
-    if not tools_ready or not humanizer or not all(s['discovered'] for s in skills):
-        actions.append("./haean setup 으로 프로젝트 도구와 스킬을 설치하세요.")
+    if not installation["ready"]:
+        actions.append(f"{repository_command('setup')} 으로 프로젝트 도구와 스킬을 설치하세요.")
     if humanizer_revision["state"] == "modified":
         actions.append("vendor/im-not-ai의 로컬 수정을 보존·정리한 뒤 setup을 실행하세요. 고정 버전과 다른 윤문 실행으로 구분해야 합니다.")
     if sources['state'] != 'indexed': actions.append('haean tools import /허용된/자료경로 로 출제 참고자료를 가져오세요.')
     if not figures_ready: actions.append("도식·그래프 문항은 haean setup-figures 로 이미지 검토 도구를 설치하세요.")
     layout_ready = (ROOT / "data/bin/hwp").is_file() and (ROOT / "data/bin/HaeanFill.class").is_file()
     if not layout_ready: actions.append("한글 출력이 필요하면 haean setup-layout 을 실행하고 팀의 빈 양식을 준비하세요.")
-    ready = bool(codex and logged_in and tools_ready and humanizer and skills
-                 and all(s['discovered'] for s in skills) and roles and all(r['valid'] for r in roles))
+    ready = bool(codex and logged_in and installation["ready"] and roles and all(r['valid'] for r in roles))
     print(json.dumps({"root": str(ROOT), "codex": codex,
                       "chatgpt_login": logged_in, "terminal_hud": hud,
                       "tools_installed": tools_ready,
@@ -391,10 +460,43 @@ def doctor(strict=False):
     return 1 if strict and not ready else 0
 
 
+def launcher_arguments(arguments):
+    """Consume launcher options while preserving delegated and literal arguments."""
+    args = []
+    madmax = False
+    for index, value in enumerate(arguments):
+        if value == "--":
+            return args + arguments[index:], madmax
+        if value == "--madmax":
+            madmax = True
+            continue
+        args.append(value)
+        if len(args) == 1 and value in {"tools", "typeset"}:
+            return args + arguments[index + 1:], madmax
+    return args, madmax
+
+
+def request_arguments(args):
+    for index, value in enumerate(args):
+        if value == "--":
+            return args[:index] + args[index + 1:]
+        if value.startswith("-"):
+            raise ValueError(f"알 수 없는 해안 옵션입니다: {value}. haean --help 로 확인하세요. 요청이 '-'로 시작하면 앞에 -- 를 붙이세요.")
+    return args
+
+
 def main():
-    args = sys.argv[1:]
-    if args in (["banner"], ["banner", "--madmax"]):
-        banner(madmax="--madmax" in args, large=True)
+    args, madmax = launcher_arguments(sys.argv[1:])
+    simple_commands = {"banner", "hud", "setup", "setup-figures", "setup-layout",
+                       "setup-typeset", "status", "--version", "help", "-h", "--help"}
+    if args and args[0] in simple_commands and len(args) > 1:
+        usage = "사용법: haean " + args[0]
+        if args[1:] in (["--help"], ["-h"]):
+            print(usage)
+            return 0
+        raise ValueError(usage + " (도움말: haean --help)")
+    if args == ["banner"]:
+        banner(madmax=madmax, large=True)
         return 0
     if args == ["hud"]:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -404,7 +506,7 @@ def main():
     if args == ["setup"]: return setup()
     if args == ["setup-figures"]:
         python = ROOT / ".venv/bin/python"
-        if not python.exists(): raise ValueError("먼저 haean setup 을 실행하세요")
+        if not python.exists(): raise ValueError(f"먼저 {repository_command('setup')} 을 실행하세요")
         subprocess.run([str(python), "-m", "pip", "install", "-e", ".[layout]"], cwd=ROOT, check=True)
         print("그림 검토용 Python 도구 설치 완료.")
         if not shutil.which('dot'): print("논증 도식에는 Graphviz도 필요합니다. macOS: brew install graphviz / Linux: sudo apt install graphviz")
@@ -412,20 +514,22 @@ def main():
         return 0
     if args == ["setup-layout"]:
         python = ROOT / ".venv/bin/python"
-        if not python.exists(): raise ValueError("먼저 ./haean setup 을 실행하세요")
+        if not python.exists(): raise ValueError(f"먼저 {repository_command('setup')} 을 실행하세요")
         subprocess.run([str(python), "-m", "pip", "install", "-e", ".[layout]"], cwd=ROOT, check=True)
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup_layout.py")], check=True).returncode
     if args == ["setup-typeset"]:
         python = ROOT / ".venv/bin/python"
-        if not python.exists(): raise ValueError("먼저 haean setup 을 실행하세요")
+        if not python.exists(): raise ValueError(f"먼저 {repository_command('setup')} 을 실행하세요")
         subprocess.run([str(python), "-m", "pip", "install", "-e", str(ROOT / "typeset")], check=True)
         print("HWPX 조판 코드 설치 완료. 문제·해설 양식은 --template / --solution-template 으로 지정하세요.")
         return 0
     if args and args[0] == "typeset":
         python = ROOT / ".venv/bin/python"
-        if not python.exists(): raise ValueError("먼저 haean setup 과 haean setup-typeset 을 실행하세요")
+        if not python.exists(): raise ValueError(f"먼저 {repository_command('setup')} 과 {repository_command('setup-typeset')} 을 실행하세요")
         return subprocess.run([str(python), "-m", "haean_typeset", *args[1:]]).returncode
     if args and args[0] == "doctor":
+        if any(flag not in {"-h", "--help", "--check"} for flag in args[1:]):
+            raise ValueError("사용법: haean doctor [--check] (도움말: haean doctor --help)")
         if any(flag in {"-h", "--help"} for flag in args[1:]):
             print("""사용법: haean doctor [--check]
 
@@ -437,27 +541,41 @@ def main():
             raise ValueError("사용법: haean doctor [--check] (도움말: haean doctor --help)")
         return doctor(strict="--check" in args)
     if args == ["status"]: return status()
+    local_usage = {"skills": "haean skills [스킬명]", "skill": "haean skill 스킬명 [작업 요청]",
+                   "track-exam": "haean track-exam runs/회차폴더"}
+    if args and args[0] in local_usage and args[1:] in (["--help"], ["-h"]):
+        print("사용법: " + local_usage[args[0]])
+        return 0
     if args and args[0] == "skills":
-        if len(args) > 2: raise ValueError("사용법: haean skills [스킬명]")
+        if len(args) > 2 or (len(args) == 2 and args[1].startswith("-")):
+            raise ValueError("사용법: haean skills [스킬명]")
         return show_skills(args[1] if len(args) == 2 else None)
     if args and args[0] == 'track-exam':
-        if len(args) != 2: raise ValueError('사용법: haean track-exam runs/회차폴더')
+        if len(args) != 2 or args[1].startswith("-"):
+            raise ValueError('사용법: haean track-exam runs/회차폴더')
         return track_exam(args[1])
     if args == ["--version"]:
         print("haean " + tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"])
         return 0
     if args and args[0] == "tools":
         return subprocess.run([str(ROOT / "scripts/haean-tool"), *args[1:]]).returncode
-    if args and args[0] in {"-h", "--help", "help"}: return help_text()
-    madmax = bool(args and args[0] == "--madmax")
-    if madmax: args = args[1:]
+    if args and args[0] in {"-h", "--help", "help"}:
+        help_text()
+        return 0
     skill = "haean"
     if args and args[0] == "skill":
         if len(args) < 2: raise ValueError("사용법: haean skill 스킬명 [작업 요청]")
         selected = select_skill(args[1]); skill = selected["name"]
         args = args[2:] or [selected["default_prompt"].removeprefix("$" + skill + " ")]
+        if args in (["--help"], ["-h"]):
+            print("사용법: haean skill " + skill + " [작업 요청]")
+            return 0
+    args = request_arguments(args)
+    if not installation_state()["ready"]:
+        raise ValueError(f"해안 설치가 완료되지 않았습니다. {repository_command('setup')} 으로 로컬 도구·스킬 연결·고정 윤문 스킬을 준비하세요. 상태 확인: {repository_command('doctor')}")
     codex = shutil.which("codex")
     if not codex: raise ValueError("Codex CLI를 설치하고 codex login으로 ChatGPT 로그인하세요")
+    no_daemon = codex_supports_no_daemon(codex)
     login = subprocess.run([codex, "login", "status"], capture_output=True, text=True)
     if login.returncode or "ChatGPT" not in login.stdout + login.stderr:
         raise ValueError("ChatGPT 구독 로그인 상태가 아닙니다. codex login을 실행하세요")
@@ -465,12 +583,10 @@ def main():
     env = os.environ.copy()
     for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
         env.pop(key, None)
-    if not (ROOT / ".agents/skills/haean/SKILL.md").exists() or not (ROOT / ".venv/bin/python").exists():
-        raise ValueError("해안 설치가 필요합니다. ./haean setup 을 먼저 실행하세요")
     # Imported here so inspection commands remain dependency-free.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from terminal_ui import run as run_terminal
-    return run_terminal(codex_command(codex, task, madmax, skill), env, ROOT, banner, madmax, skill)
+    return run_terminal(codex_command(codex, task, madmax, skill, no_daemon=no_daemon), env, ROOT, banner, madmax, skill)
 
 
 if __name__ == "__main__":

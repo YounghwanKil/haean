@@ -74,6 +74,9 @@ def run_tmux(tmux, command, env, root, madmax, skill):
             return subprocess.run(base + list(args), env=env, check=check, capture_output=True, text=True)
         try:
             call('new-session', '-d', '-s', 'haean', '-c', str(root), '-x', str(cols), '-y', str(max(rows, 8)), child)
+            # A closed terminal can kill this launcher before its finally block runs.
+            # Let our isolated server clean up its panes when the client disappears.
+            call('set-hook', '-g', 'client-detached', 'kill-server')
             call('set-option', '-t', 'haean', 'status-position', 'bottom')
             call('set-option', '-t', 'haean', 'status-style', 'bg=default,fg=white')
             call('set-option', '-t', 'haean', 'status-format[0]',

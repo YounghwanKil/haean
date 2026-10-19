@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 def test_madmax_is_explicit_and_task_is_single_argument():
     path = Path(__file__).resolve().parents[1] / 'scripts/launch.py'
@@ -17,7 +19,8 @@ def test_madmax_is_explicit_and_task_is_single_argument():
     assert normal[normal.index('-m') + 1] == 'gpt-6-astra'
 
 
-def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys, tmp_path):
+@pytest.mark.parametrize("no_daemon", [False, True])
+def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys, tmp_path, no_daemon):
     import json
     import pytest
     from types import SimpleNamespace
@@ -34,13 +37,16 @@ def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys, tmp_path):
     # Dispatch fixture is independent of the developer's installed virtualenv.
     (tmp_path/'skills').symlink_to(launch.ROOT/'skills',target_is_directory=True)
     (tmp_path/'.agents').symlink_to(launch.ROOT/'.agents',target_is_directory=True)
+    (tmp_path/'vendor').symlink_to(launch.ROOT/'vendor',target_is_directory=True)
     (tmp_path/'.venv/bin').mkdir(parents=True)
     (tmp_path/'.venv/bin/python').touch()
     monkeypatch.setattr(launch,'ROOT',tmp_path)
+    monkeypatch.setattr(launch,'humanizer_state',lambda: {'state': 'pinned'})
     calls=[]
     def run(command,**kwargs):
         calls.append(command)
-        return SimpleNamespace(returncode=0,stdout='ChatGPT',stderr='')
+        stdout = '  --no-daemon\n' if no_daemon and command == ['/codex', '--help'] else 'ChatGPT'
+        return SimpleNamespace(returncode=0,stdout=stdout,stderr='')
     monkeypatch.setattr(launch.subprocess,'run',run)
     monkeypatch.setattr(launch.shutil,'which',lambda _: '/codex')
     monkeypatch.setattr(launch.sys,'argv',['haean','skills','psat'])
@@ -51,3 +57,18 @@ def test_skill_catalog_and_direct_dispatch(monkeypatch, capsys, tmp_path):
     assert launch.main()==0
     assert calls[-1][-1]=='$haean-psat '+request
     assert calls[-1].count('--dangerously-bypass-approvals-and-sandbox')==1
+    assert ('--no-daemon' in calls[-1]) is no_daemon
+    assert calls.index(['/codex', '--help']) < calls.index(['/codex', 'login', 'status'])
+
+
+def test_unavailable_codex_help_keeps_compatible_flags(monkeypatch):
+    import subprocess
+    path = Path(__file__).resolve().parents[1] / 'scripts/launch.py'
+    spec = importlib.util.spec_from_file_location('launch_capability_test', path)
+    launch = importlib.util.module_from_spec(spec); spec.loader.exec_module(launch)
+    def timeout(command, **kwargs):
+        assert command == ['codex', '--help'] and kwargs['timeout'] == 10
+        raise subprocess.TimeoutExpired(command, 10)
+    monkeypatch.setattr(launch.subprocess, 'run', timeout)
+    assert not launch.codex_supports_no_daemon('codex')
+    assert '--no-daemon' not in launch.codex_command('codex', '요청')

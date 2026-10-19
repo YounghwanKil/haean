@@ -14,7 +14,7 @@ dev = ["pytest>=8,<10", "PyYAML>=6,<7"]
 layout = ["matplotlib>=3.9,<4", "fonttools>=4.28,<5", "Pillow>=10,<13"]
 
 [project.scripts]
-haean = "haean.cli:main"
+haean-tool = "haean.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
