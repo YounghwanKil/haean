@@ -17,7 +17,16 @@ def arithmetic(expression: str) -> Fraction:
         raise ValueError("Expression too complex")
     def visit(node):
         if isinstance(node, ast.Constant) and type(node.value) in {int, float}:
-            value = Fraction(str(node.value))
+            if type(node.value) is int:
+                value = Fraction(node.value)
+            else:
+                # AST float values have already rounded the literal. Read its
+                # source token so decimal comparisons retain their exact value.
+                literal = ast.get_source_segment(expression, node).replace("_", "")
+                exponent = re.search(r"[eE]([+-]?\d+)$", literal)
+                if exponent and abs(int(exponent[1])) > 1000:
+                    raise ValueError("Exponent magnitude too large")
+                value = Fraction(literal)
             if abs(value) > 10**18:
                 raise ValueError("Number too large")
             return value

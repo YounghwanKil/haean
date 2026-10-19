@@ -73,6 +73,9 @@ def main():
     p = sub.add_parser("check", help="수동 작성본 검증 및 독립 검토 패킷 생성")
     p.add_argument("run", type=Path)
     p.add_argument("draft", type=Path)
+    p = sub.add_parser("distractor-check", help="SHA로 연결한 정상·오독 비교식 점검; 선택 검토 보조지")
+    p.add_argument("candidate", type=Path)
+    p.add_argument("sidecar", type=Path)
     p = sub.add_parser("editor-prepare", help="독립 풀이를 고정하고 새 편집 검토 패킷 준비")
     p.add_argument("run", type=Path)
     p.add_argument("--blind", required=True, type=Path)
@@ -216,6 +219,9 @@ def feedback_text(a):
 
 
 def dispatch(a):
+    if a.command == "distractor-check":
+        from .distractor_checks import check_distractors
+        return check_distractors(a.candidate, a.sidecar)
     if a.command == "compose":
         from .composition_cli import dispatch as composition_dispatch
         return composition_dispatch(a)
