@@ -11,6 +11,8 @@ haean tools exam-build data/exam-plan.json --composition-packet runs/composition
 
 `design`은 모델 호출 없이 형식과 내용설계 제안을 만듭니다. `exam-build`에서 실제 문항 작성과 독립 풀이·편집 검토가 진행됩니다. 설계에 표시된 기출 ID와 빈 원천 메모는 검증된 참고 전문이 아닙니다.
 
+전체 생성 전에 [회차에 전달할 근거](https://github.com/YounghwanKil/haean/blob/main/docs/EXAM_INPUTS.md)를 확인하세요. 기존 corpus 검색과 정제 트랙 색인·로컬 지식 위키·누적 생성 이력은 자동으로 모두 합쳐지지 않습니다. 해안이 필요한 원문을 읽고 해당 내용과 출처를 슬롯에 연결한 뒤 계획을 확정해야 합니다. 소재→설계→작성의 `track generate`, 한국어 윤문, 고정 평가와 한글 출력도 별도 단계입니다. `workers=3`은 동시 작업 수이며 총 모델 호출 수가 아닙니다.
+
 원래 배정표가 기준입니다. 문항 번호와 stable ID를 따로 유지하며, 외부 유형·난도·세트는 명시 대응합니다. 설계의 정답 번호에 맞추려고 논리를 바꾸지 않습니다. 작성·검토·조립에서 입력과 후보 버전을 확인하고 독립 풀이에는 제작 설계를 전달하지 않습니다. 변경·파손된 파일에 이전 검토 가능 상태를 재사용하지 않습니다.
 
 이 연결은 시험별 40/25문항과 하·중·상 계획 난도를 지원합니다. 언어이해는 기존 제작 경로를 유지합니다. composition 회차는 `haean tools exam-resume 이전회차 --out 새회차`로 원 기록을 보존하며 이어갈 수 있습니다. 완료 묶음의 검토와 설계 연결을 확인해 재사용하고 미완료 묶음만 새 실행에서 처리합니다. 입력·코드가 달라진 설계, 누락된 검토 연결, 별도 `--replacement`는 거절합니다. [재개 사용법](https://github.com/YounghwanKil/haean/blob/main/docs/PRODUCTION.md#외부-회차-설계를-사용한-실행-재개)을 참고하세요. 프로필 형식과 슬롯 대응 예시는 [상세 문서](https://github.com/YounghwanKil/haean/blob/main/docs/COMPOSITION.md)를 확인하세요.

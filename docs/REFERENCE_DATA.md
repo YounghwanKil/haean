@@ -49,7 +49,16 @@ haean tools track ref-build data/reference-answers-01/refs.jsonl \
 
 `ref-answers`는 답을 풀거나 인터넷에서 답안을 찾는 명령이 아니다. 정제한 근거와 PDF의 정답 행을 대조하고 출처 사본을 보존하는 단계다. 해안에게 “공식 확정 정답을 찾아 원문과 책형을 확인하고 `ref-answers` 근거를 준비해줘”라고 요청할 수 있다. PDF 텍스트 대조에는 Poppler의 `pdftotext`가 필요하다. 이 의존성은 `ref-answers`와 공식 정답 근거가 포함된 자료의 `ref-build`·`ref-search`에 적용된다. 없는 경우 검증을 실패로 처리하며 정답을 추정하지 않는다.
 
-입력은 `schema_version=1`, `usage=development`인 감사 JSON이다. `sources`에는 공식 게시물·확정 문구·첨부·다운로드 기록·정답 PDF·추출 텍스트를, `records`에는 기존 ID·시험 식별·정답 행 위치·문제지 대응·시각 확인 근거를 둔다. 각 파일의 경로와 해시도 필요하다. 현재 지원 범위는 **정답표 좌측의 1–20번 행**이며, 감사 ID 집합과 입력 refs ID 집합이 같아야 한다. 다른 표나 부분 선택을 조용히 추정하지 않는다. 세부 검증 계약은 [구현](../src/haean/reference_answers.py)과 [합성 예제](../tests/test_reference_answers.py)에 있다.
+입력은 `schema_version=1`, `usage=development`인 감사 JSON이다. `sources`에는 공식 게시물·확정 문구·첨부·다운로드 기록·정답 PDF·추출 텍스트를, `records`에는 기존 ID·시험 식별·정답 행 위치·문제지 대응·시각 확인 근거를 둔다. 각 파일의 경로와 해시도 필요하다. 감사 ID 집합과 입력 refs ID 집합이 같아야 한다. `answer_locator.table`에 표 방향을 명시한다.
+
+| 급수·문번 | `table` | `raw_text_row` 검증 |
+|---|---|---|
+| 5·7급 1–20번 | `좌측 문번/정답 표` | 기존 v1과 같이 두 셀 또는 네 셀을 허용하고 첫 문번·정답 쌍을 선택한다. |
+| 5급 21–40번 | `우측 문번/정답 표` | 정확히 네 셀을 요구하고 뒤의 문번·정답 쌍을 선택한다. 앞 문번은 선택 문번−20, 앞 정답은 1–5여야 한다. |
+
+예를 들어 `raw_text_row="1 2 21 4"`에서 왼쪽 1번 답은 2, 오른쪽 21번 답은 4다. 이는 실제 시험 답이 아닌 합성 예시다. 오른쪽 표를 선택해도 PDF의 **전체 행**을 비교하며, 같은 왼쪽 문번 또는 오른쪽 문번을 가진 행이 중복되거나 충돌하면 거부한다. PDF의 시험·과목·책형 머리글, 문제지 바이트 대응, 출처 해시, 보존 텍스트의 전체·쪽별 줄 위치 검사도 그대로 적용한다. 7급 오른쪽 표는 검토된 계약이 없어 지원하지 않으며, 방향이나 다른 표 구조를 추정하지 않는다. 세부 검증 계약은 [구현](../src/haean/reference_answers.py)과 [합성 예제](../tests/test_reference_answers.py)에 있다.
+
+합성 테스트는 양쪽의 서로 다른 답과 1·20·21·40번 경계, 잘못된 방향·셀·짝 문번·정답 범위·줄 위치·중복 행, 정답과 텍스트의 해시를 다시 맞춘 변조를 확인한다. Poppler가 설치된 환경에서는 합성 Unicode PDF로 `ref-answers`·`ref-build`·`ref-search`의 내부 경로도 연결해 검사한다. 이 코드의 지원 범위 확대만으로 실제 전사·공식 정답 연결·분류를 마친 참고문항 수가 늘지는 않는다.
 
 새 참고 레코드의 `answer`·`answer_verified`와 `official_answer_evidence`가 후속 확인을 나타낸다. 원문 `text`와 `corpus_evidence`의 `answer_verified=false`는 **전사 당시 상태**로 보존된다. 같은 문항의 서로 다른 확인 시점을 뜻하므로 과거 기록을 수정해 두 값을 맞추지 않는다. 새 출처 파일들은 실행 스냅샷에도 포함된다.
 

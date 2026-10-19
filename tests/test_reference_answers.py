@@ -1,6 +1,7 @@
 """Synthetic audit fixtures; no official questions, answers or private paths."""
 import json
 from pathlib import Path
+import shutil
 import zipfile
 
 import pytest
@@ -16,17 +17,23 @@ from test_reference_bridge import corpus_data, sha, save
 @pytest.fixture
 def audit(corpus_data, tmp_path, monkeypatch, request):
     d = corpus_data
+    options = request.param if isinstance(getattr(request, "param", None), dict) else {}
+    real_pdf = options.get("real_pdf", False)
+    if real_pdf and not shutil.which("pdftotext"):
+        pytest.skip("optional Poppler is unavailable")
     packet = json.loads(d["packet"].read_text())
     questions = {}
     for item in packet["items"]:
         grade = int(item["exam"][-1])
         item["year"], item["booklet"] = 2032, "다"
+        item["number"] = options.get("numbers", {}).get(grade, 1)
         if getattr(request, "param", None) == "no_booklet":
             item.pop("booklet")
         elif getattr(request, "param", None) == "wrong_booklet":
             item["booklet"] = "라"
         pdf = tmp_path / f"synthetic-question-{grade}.pdf"
-        pdf.write_text(f"2032년도 국가공무원 {grade}급 공채 등 필기시험 언어논리영역 다 책형 1쪽\n합성 문항", encoding="utf-8")
+        question_text = f"2032년도 국가공무원 {grade}급 공채 등 필기시험 언어논리영역 다 책형 1쪽\n합성 문항"
+        pdf.write_bytes(synthetic_pdf(question_text) if real_pdf else question_text.encode("utf-8"))
         item["source"]["pdf_path"], item["source"]["pdf_sha256"] = str(pdf), sha(pdf)
         questions[grade] = pdf
     save(d["packet"], packet)
@@ -45,8 +52,19 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
     answer_download_path, question_download_path = tmp_path / "answer-downloads.json", tmp_path / "question-downloads.json"
     for grade, record in zip((5, 7), records):
         answer_pdf, answer_txt = tmp_path / f"answer-{grade}.pdf", tmp_path / f"answer-{grade}.txt"
-        answer_text = f"2032년도 국가공무원 {grade}급 공개경쟁채용\n정답표\n영역 언어논리 책형 다 책형\n문번 정답 문번 정답\n 1 2 21 4\n\f"
-        answer_pdf.write_text(answer_text, encoding="utf-8")
+        number = record["number"]
+        left_number = number if number <= 20 else number - 20
+        raw_row = f" {left_number} 2 {left_number + 20} 4"
+        if options.get("two_cell_tables"):
+            raw_row = f" {left_number} 2"
+        answer_text = f"2032년도 국가공무원 {grade}급 공개경쟁채용\n정답표\n영역 언어논리 책형 다 책형\n문번 정답 문번 정답\n{raw_row}\n\f"
+        if extra_rows := options.get("extra_answer_rows", {}).get(grade):
+            answer_text = answer_text.replace("\f", "\n".join(extra_rows) + "\n\f")
+        answer_pdf.write_bytes(synthetic_pdf(answer_text.rstrip("\f")) if real_pdf else answer_text.encode("utf-8"))
+        if real_pdf:
+            answer_text = reference_answers._pdf_text(answer_pdf, {})
+            raw_row = next(line for line in answer_text.splitlines() if line.split() == raw_row.split())
+        row_line = answer_text.split("\n").index(raw_row) + 1
         answer_txt.write_text(answer_text, encoding="utf-8")
         html = tmp_path / f"post-{grade}.html"
         html.write_text("<p>합성 최종정답 확정</p>\n", encoding="utf-8")
@@ -88,12 +106,14 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
             source[stem + "_path"], source[stem + "_sha256"] = str(path), sha(path)
         sources.append(source)
         mappings.append({"id": record["id"], "exam": f"psat{grade}", "grade": grade, "year": 2032,
-            "track": "psat_verbal", "subject": "언어논리", "booklet": "다", "number": 1, "answer": 2,
+            "track": "psat_verbal", "subject": "언어논리", "booklet": "다", "number": number,
+            "answer": 2 if number <= 20 else 4,
             "answer_verified": True, "verification_status": reference_answers.STATUS,
             "classification_status": "provisional", "source_id": source["source_id"],
-            "answer_locator": {"physical_pdf_page": 1, "question_number_row": 1, "column": "정답",
-                "table": "좌측 문번/정답 표", "raw_text_row": " 1 2 21 4", "page_text_line_1based": 5,
-                "global_text_line_1based": 5},
+            "answer_locator": {"physical_pdf_page": 1, "question_number_row": number, "column": "정답",
+                "table": "좌측 문번/정답 표" if number <= 20 else "우측 문번/정답 표",
+                "raw_text_row": raw_row, "page_text_line_1based": row_line,
+                "global_text_line_1based": row_line},
             "answer_visual_evidence": {"path": str(image), "sha256": sha(image),
                 "reviewed_fields": ["시험명", "영역", "책형", "문번 행", "정답 열"],
                 "independent_answer_solve": False, "reviewer": "synthetic reviewer"},
@@ -117,12 +137,94 @@ def audit(corpus_data, tmp_path, monkeypatch, request):
             cache[path] = path.read_text(encoding="utf-8")
         return cache[path]
 
-    monkeypatch.setattr(reference_answers, "_pdf_text", synthetic_extract)
+    if not real_pdf:
+        monkeypatch.setattr(reference_answers, "_pdf_text", synthetic_extract)
     return {**d, "refs": refs, "manifest": manifest_path, "new": tmp_path / "enriched", "calls": calls}
 
 
 def enrich(d):
     return reference_answers.enrich(d["refs"], d["manifest"], d["new"])
+
+
+@pytest.mark.parametrize("audit", [
+    {"numbers": {5: number}, "real_pdf": real_pdf}
+    for number in (1, 20, 21, 40) for real_pdf in (False, True)
+], indirect=True)
+def test_both_table_sides_and_boundaries_enrich_build_search(audit):
+    d = audit
+    original = json.loads(d["refs"].read_text().splitlines()[0])
+    assert enrich(d)["exported"] == 2
+    with ReferenceIndex(d["new"] / "index.sqlite") as index:
+        assert index.build(d["new"] / "refs.jsonl")["indexed"] == 2
+        hit = index.search(RefQuery(track="psat_verbal", grade=5))["hits"][0]
+        assert hit["number"] == original["number"]
+        # The left and right answers deliberately differ on the same PDF row.
+        assert hit["answer"] == (2 if original["number"] <= 20 else 4)
+        assert hit["answer_verified"] is True
+        assert hit["corpus_evidence"] == original["corpus_evidence"]
+        assert hit["text"] == original["text"] and hit["item_type"] == original["item_type"]
+
+
+@pytest.mark.parametrize("audit", [
+    {"numbers": {5: 20, 7: 20}, "two_cell_tables": True, "real_pdf": real_pdf}
+    for real_pdf in (False, True)
+], indirect=True)
+def test_version_one_two_cell_left_tables_remain_supported(audit):
+    assert enrich(audit)["exported"] == 2
+    with ReferenceIndex(audit["new"] / "index.sqlite") as index:
+        assert index.build(audit["new"] / "refs.jsonl")["indexed"] == 2
+        for grade in (5, 7):
+            hit = index.search(RefQuery(track="psat_verbal", grade=grade))["hits"][0]
+            assert (hit["number"], hit["answer"], hit["answer_verified"]) == (20, 2, True)
+
+
+@pytest.mark.parametrize("audit", [{"numbers": {5: 21}}], indirect=True)
+@pytest.mark.parametrize("field,value,error", [
+    ("table", "좌측 문번/정답 표", "방향·급수·문번"),
+    ("table", "자동", "방향·급수·문번"),
+    ("question_number_row", 1, "방향·급수·문번"),
+    ("column", "문번", "방향·급수·문번"),
+    ("raw_text_row", "21 4", "셀 수"),
+    ("raw_text_row", "1 2 21", "셀 수"),
+    ("raw_text_row", "1 2 21 4 22 3", "셀 수"),
+    ("raw_text_row", "1 답 21 4", "숫자"),
+    ("raw_text_row", "2 2 21 4", "숫자"),
+    ("raw_text_row", "0 2 21 4", "숫자"),
+    ("raw_text_row", "1 0 21 4", "숫자"),
+    ("raw_text_row", "1 6 21 4", "숫자"),
+    ("raw_text_row", "1 2 22 4", "숫자"),
+    ("raw_text_row", "1 2 21 0", "숫자"),
+    ("raw_text_row", "1 2 21 6", "숫자"),
+    ("raw_text_row", "1 2 21 2", "숫자"),
+    ("raw_text_row", "1 3 21 4", "실제 PDF 정답 행"),
+    ("page_text_line_1based", 4, "텍스트 줄 위치"),
+    ("global_text_line_1based", 4, "텍스트 줄 위치"),
+])
+def test_right_table_invalid_locator_never_publishes(audit, field, value, error):
+    d = audit
+    manifest = json.loads(d["manifest"].read_text())
+    manifest["records"][0]["answer_locator"][field] = value
+    save(d["manifest"], manifest)
+    with pytest.raises(ValueError, match=error):
+        enrich(d)
+    assert not (d["new"] / "refs.jsonl").exists()
+
+
+@pytest.mark.parametrize("audit", [
+    {"numbers": {5: 21}, "extra_answer_rows": {5: [extra]}}
+    for extra in ("1 2 21 4", "1 2 21 3", "2 3 21 4", "1 2 22 4")
+], indirect=True)
+def test_right_table_duplicate_or_conflicting_pdf_row_is_rejected(audit):
+    with pytest.raises(ValueError, match="실제 PDF 정답 행"):
+        enrich(audit)
+    assert not (audit["new"] / "refs.jsonl").exists()
+
+
+@pytest.mark.parametrize("audit", [{"numbers": {7: 21}}, {"numbers": {7: 25}}], indirect=True)
+def test_unaudited_grade_seven_right_table_remains_unsupported(audit):
+    with pytest.raises(ValueError, match="방향·급수·문번"):
+        enrich(audit)
+    assert not (audit["new"] / "refs.jsonl").exists()
 
 
 def test_enrich_freezes_official_evidence_preserves_originals_and_staged_sources(audit):
@@ -210,6 +312,10 @@ def test_frozen_evidence_changes_fail_build_and_search(audit, target, when):
                 index.search(RefQuery(track="psat_verbal", grade=5))
 
 
+@pytest.mark.parametrize("audit", [None] + [
+    {"numbers": {5: number}, "real_pdf": real_pdf}
+    for number in (21, 40) for real_pdf in (False, True)
+], indirect=True)
 @pytest.mark.parametrize("when", ["build", "search"])
 def test_resealed_answer_and_text_cannot_override_pdf(audit, when):
     d = audit
@@ -224,17 +330,26 @@ def test_resealed_answer_and_text_cannot_override_pdf(audit, when):
         mapping_path = Path(evidence["manifest"]["file"])
         mapping = json.loads(mapping_path.read_text())
         mapping["records"][0]["answer"] = record["answer"] = 3
-        mapping["records"][0]["answer_locator"]["raw_text_row"] = " 1 3 21 4"
+        locator = mapping["records"][0]["answer_locator"]
+        original_row = locator["raw_text_row"]
+        cells = original_row.split()
+        cells[1 if record["number"] <= 20 else 3] = "3"
+        locator["raw_text_row"] = " " + " ".join(cells)
         source = mapping["sources"][0]
         txt = evidence["files"][source["answer_text_path"]]
         txt_path = Path(txt["file"])
-        txt_path.write_text(txt_path.read_text().replace("1 2 21 4", "1 3 21 4"))
+        txt_path.write_text(txt_path.read_text().replace(original_row, locator["raw_text_row"]))
         txt["sha256"] = source["answer_text_sha256"] = sha(txt_path)
         save(mapping_path, mapping)
-        evidence["manifest"]["sha256"] = sha(mapping_path)
+        for candidate in records:
+            candidate_evidence = candidate["official_answer_evidence"]
+            candidate_evidence["manifest"]["sha256"] = sha(mapping_path)
+            candidate_evidence["files"][source["answer_text_path"]]["sha256"] = sha(txt_path)
         if when == "build":
             refs.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records))
-            assert index.build(refs)["indexed"] == 0
+            result = index.build(refs)
+            assert result["indexed"] == 0
+            assert any("실제 PDF 정답 행" in entry["error"] for entry in result["errors"])
         else:
             with index.db:
                 index.db.execute("UPDATE track_refs SET record=? WHERE id=?", (json.dumps(record), record["id"]))
@@ -326,7 +441,6 @@ def synthetic_pdf(text):
 
 
 def test_real_poppler_reads_synthetic_unicode_pdf_and_cache(tmp_path, monkeypatch):
-    import shutil
     if not shutil.which("pdftotext"):
         pytest.skip("optional Poppler is unavailable")
     pdf = tmp_path / "synthetic.pdf"

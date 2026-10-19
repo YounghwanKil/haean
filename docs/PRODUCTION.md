@@ -4,6 +4,8 @@
 
 `exam-build`는 배정표에서 전체 회차를 만든다. `exam-resume`은 중단된 실행의 문항·검토 이력을 남겨 두고 새 출력 경로에서 이어간다.
 
+시작 전에 [전체 회차 입력](EXAM_INPUTS.md)에서 자동 검색 범위와 수동 근거 연결을 확인한다. 정제 색인·누적 이력·위키의 존재만으로 해당 실행에 사용됐다고 보지 않는다. 단계형 출제, 한국어 윤문, 고정 평가와 한글 출력은 별도 연결이며 `exam-build` 한 명령에 모두 포함되어 있지 않다.
+
 ```sh
 ./haean tools exam-build runs/example/assembly.json --out runs/example/production-v1 --workers 3
 ./haean tools exam-status runs/example/production-v1

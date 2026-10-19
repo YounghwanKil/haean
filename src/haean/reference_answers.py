@@ -63,6 +63,37 @@ def _pdf_text(path, cache):
     return cache[path]
 
 
+def _verify_answer_row(row, page):
+    """Match an explicit table side and its complete, unique PDF text row."""
+    locator, number = row["answer_locator"], row["number"]
+    left = locator["table"] == "좌측 문번/정답 표" and _integer(number, 1, 20)
+    right = (locator["table"] == "우측 문번/정답 표" and row["grade"] == 5
+             and _integer(number, 21, 40))
+    _require(locator["question_number_row"] == number and locator["column"] == "정답"
+             and (left or right), "지원하는 정답표 방향·급수·문번이 아닙니다")
+    raw_row = locator["raw_text_row"]
+    _require(isinstance(raw_row, str) and bool(raw_row.strip()),
+             "정답표 원문 행은 비어 있지 않은 문자열이어야 합니다")
+    cells = raw_row.split()
+    _require((len(cells) == 4 if right else len(cells) in (2, 4))
+             and all(c.isdecimal() for c in cells), "답행 숫자·셀 수 불일치")
+    values = [int(c) for c in cells]
+    if right:
+        _require(values[0] == number - 20 and 1 <= values[1] <= 5
+                 and values[2:4] == [number, row["answer"]], "답행 숫자 불일치")
+    else:
+        _require(values[:2] == [number, row["answer"]], "답행 숫자 불일치")
+    first_number = str(number - 20 if right else number)
+    page_rows = []
+    for line in page.splitlines():
+        tokens = line.split()
+        if tokens and (tokens[0] == first_number
+                       or (right and len(tokens) >= 3 and tokens[2] == str(number))):
+            page_rows.append(tokens)
+    _require(page_rows == [cells], "실제 PDF 정답 행이 없거나 중복되거나 다릅니다")
+    return raw_row
+
+
 def _manifest(data):
     value = json.loads(data)
     _require(isinstance(value, dict), "감사 manifest는 객체여야 합니다")
@@ -194,17 +225,7 @@ def verify_official_answer_evidence(record, base, verified, extracted=None):
     _require(f"{row['year']}년도국가공무원{row['grade']}급" in header
              and re.search(r"영역" + re.escape(row["subject"]) + r"책형" + re.escape(_norm(row["booklet"])) + r"책형", header),
              "정답표 실제 PDF의 시험·과목·책형 머리글 불일치")
-    _require(locator["question_number_row"] == row["number"] and locator["column"] == "정답"
-             and locator["table"] == "좌측 문번/정답 표" and row["number"] <= 20,
-             "현재 지원하는 좌측 정답표 행 형식이 아닙니다")
-    raw_row = locator["raw_text_row"]
-    _require(isinstance(raw_row, str) and bool(raw_row.strip()),
-             "정답표 원문 행은 비어 있지 않은 문자열이어야 합니다")
-    cells = raw_row.split()
-    _require(len(cells) in (2, 4) and all(c.isdecimal() for c in cells)
-             and [int(c) for c in cells[:2]] == [row["number"], row["answer"]], "답행 숫자 불일치")
-    page_rows = [line.split() for line in page.splitlines() if line.split() and line.split()[0] == str(row["number"])]
-    _require(page_rows == [cells], "실제 PDF 정답 행이 없거나 중복되거나 다릅니다")
+    raw_row = _verify_answer_row(row, page)
     # Stored extraction line locations remain auditable; actual PDF comparison
     # ignores whitespace variation between Poppler versions.
     stored = text_bytes.decode("utf-8")
