@@ -278,11 +278,17 @@ def dispatch(a):
         if a.command == "experiment": return experiment(a.name, a.baseline)
         return evaluate_suite(Corpus(a.db), a.suite, a.out, a.cases, a.repeats, a.max_revisions, a.model)
     if a.command == "blind":
+        from .review_evidence import current_binding, review_inputs, json_sha256, codex_blind_envelope
+        binding = current_binding(a.run, "blind")
+        brief, _, public = review_inputs(a.run)
         payload = json.loads((a.run / "blind-input.json").read_text())
+        if json_sha256(payload) != json_sha256(public):
+            raise ValueError("review_input_binding_mismatch: blind-input이 현행 수험생용 문항과 다릅니다. 새 check가 필요합니다")
+        prior_inputs = set((a.run / "codex-traces").glob("*-blind.input.json"))
         provider = CodexProvider(a.model, trace_dir=a.run / "codex-traces")
-        brief = Brief.model_validate_json((a.run / "brief.json").read_text())
         result = provider.call("blind", review_prompt("blind", brief), payload, BlindReview)
-        save(a.run / "blind-result.json", result.model_dump())
+        envelope = codex_blind_envelope(a.run, binding, result, a.model, prior_inputs)
+        save(a.run / "blind-result.json", envelope)
         save(a.run / "blind-usage.json", provider.usage)
         return {"result": str(a.run / "blind-result.json")}
     if a.command == "export": return export_review(a.run)
@@ -311,15 +317,23 @@ def dispatch(a):
             save(a.run / "editorial.schema.json", EditorialReview.model_json_schema())
             (a.run / "blind-instructions.md").write_text(review_prompt("blind", brief))
             (a.run / "editorial-instructions.md").write_text(review_prompt("editor", brief))
+            from .review_evidence import prepare_review_request
+            prepare_review_request(a.run)
             state = "needs_revision" if errors else "awaiting_independent_review"
         else:
-            blind = BlindReview.model_validate_json(a.blind.read_text())
-            editorial = EditorialReview.model_validate_json(a.editorial.read_text())
+            from .review_evidence import load_bound_review
+            blind, blind_evidence = load_bound_review(a.blind, a.run, "blind")
+            editorial, editorial_evidence = load_bound_review(a.editorial, a.run, "editor")
+            candidate_sha = a.candidate_sha
+            if hashlib.sha256((a.run / "candidate.json").read_bytes()).hexdigest() != candidate_sha:
+                raise ValueError("검토 결과 확인 중 문항이 바뀌었습니다. 현행 문항을 다시 검토하세요.")
             errors += review_gate(draft, blind, editorial)
-            save(a.run / "manual-review.json", {"blind": blind.model_dump(), "editorial": editorial.model_dump(), "errors": errors})
+            save(a.run / "manual-review.json", {"blind": blind.model_dump(), "editorial": editorial.model_dump(),
+                 "errors": errors, "candidate_sha256": a.candidate_sha,
+                 "evidence": {"blind": blind_evidence, "editorial": editorial_evidence}})
             state = "needs_revision" if errors else "awaiting_human_review"
         save(a.run / "status.json", {"state": state, "human_approved": False, "errors": errors,
-                                      "candidate_sha256": hashlib.sha256((a.run / "candidate.json").read_bytes()).hexdigest()})
+                                      "candidate_sha256": candidate_sha})
         return {"state": state, "errors": errors}
     corpus = Corpus(a.db)
     if a.command in {"import", "import-team"}:

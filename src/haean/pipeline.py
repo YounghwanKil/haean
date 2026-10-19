@@ -79,7 +79,12 @@ def recent_feedback(root, exam, subject):
 
 
 
-def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, initial_review=None):
+def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, initial_review=None,
+                 additional_validation=None, editorial_context=None, after_review_saved=None):
+    """Review legacy drafts; optional checks run on every candidate revision.
+
+    Additional context is editor-only. It is never sent to the blind solver.
+    """
     if not 0 <= max_revisions <= 3:
         raise ValueError("max_revisions must be 0–3")
     if (run / "draft-r0.json").exists():
@@ -104,6 +109,8 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
         for revision in range(max_revisions + 1):
             save(run / f"draft-r{revision}.json", draft.model_dump())
             errors = validate(draft, brief, allowed, context.get('exam_assignment'))
+            if additional_validation is not None:
+                errors.extend(additional_validation(draft))
             hits = similarity(draft, context["references"])
             if hits: errors.append("참고자료와 긴 문구가 겹칩니다. 독창성 검토 필요.")
             blind = provider.call("blind", review_prompt("blind", brief), {"items": [public_item(i) for i in draft.items]}, BlindReview)
@@ -111,6 +118,7 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
                                       {"brief": brief.model_dump(), "draft": draft.model_dump(),
                                        "blind": blind.model_dump(), "references": context["references"],
                                        "mechanical_errors": errors,
+                                       **({"additional_context": editorial_context} if editorial_context is not None else {}),
                                        **({"editorial_plan": context["editorial_plan"]} if context.get("editorial_plan") else {}),
                                        **({"exam_editorial_context": context["exam_editorial_context"]} if context.get("exam_editorial_context") else {}),
                                        **({'exam_contract': context['exam_contract']} if context.get('exam_contract') else {}),
@@ -119,6 +127,8 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
             review = {"revision": revision, "blind": blind.model_dump(), "editorial": editorial.model_dump(),
                       "errors": errors, "similarity_hits": hits}
             save(run / f"review-r{revision}.json", review)
+            if after_review_saved is not None:
+                after_review_saved(run / f"review-r{revision}.json", review)
             if not errors or revision == max_revisions:
                 save(run / "candidate.json", draft.model_dump())
                 save(run / "status.json", {"state": "needs_revision" if errors else "awaiting_human_review",

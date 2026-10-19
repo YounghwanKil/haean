@@ -14,3 +14,5 @@ Python과 Java 코드가 원본 HWP 양식의 슬롯에 지문·보기·선지·
 상세 계약: 저장소 `docs/LAYOUT.md`.
 
 HWPX 조판은 선택 코드 패키지로도 사용할 수 있습니다. `haean setup-typeset`으로 설치하고 `haean typeset --help`로 사용법을 확인합니다. 문제·해설 양식은 `--template`과 `--solution-template`에 로컬 경로로 지정합니다. 원고 JSON은 기존 candidate와 다른 형식이며, 호환 프로필을 확인해야 합니다. `--strict` 검사와 파일 생성 이후에도 실제 한글에서 전 페이지를 확인해야 합니다. 양식 파일 자체는 공개 배포하지 않습니다.
+
+이미 native 트랙 형식으로 작성한 문항은 `haean tools track manuscript 명세.json 문항.json --out 원고.json`으로 HWPX 원고에 옮길 수 있습니다. `--student-only`는 정답·해설·제작 기록을 제외합니다. 기존 원고는 덮어쓰지 않으며 지원하지 않는 그림·급수·세트는 오류로 알립니다. 위 단계형 생성의 기존 Draft 형식과는 다른 입력이므로 [형식과 범위](https://github.com/YounghwanKil/haean/blob/main/docs/TRACK_INTEGRATION.md#native-블록-문항을-hwpx-원고로-옮기기)를 먼저 확인하세요.

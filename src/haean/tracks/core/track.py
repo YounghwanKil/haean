@@ -61,12 +61,15 @@ class Track:
         """노출된 기반 기능과 아직 연결하지 않은 검토·생성 기능을 구분한다."""
         return {
             "version": FOUNDATION_VERSION,
-            "scope": "foundation",
+            "scope": "foundation_and_staged_legacy_authoring",
             "track": self.name,
             "label": self.label,
             "grades": list(self.grades),
             "generation_connected": False,
             "independent_review_connected": False,
+            "native_block_generation_connected": False,
+            "staged_legacy_generation_connected": self.name != "leet_reading",
+            "staged_legacy_review_connected": self.name != "leet_reading",
             "typeset_connected": False,
             "composition_available": False,
             "supported_figure_kinds": ["argument", "bar", "line"],
@@ -74,8 +77,9 @@ class Track:
             "review_lexicon": "not_imported_not_applied" if self.name == "leet_reasoning" else "not_applicable",
             "designless_manuscript_type_mapping": "unavailable_without_composition_rules" if self.grades else "not_exposed",
             "quality_improvement_verified": False,
-            "notes": ["문항 스키마는 기존 Draft와 다릅니다. 기존 run의 후보를 자동 변환하지 않습니다.",
-                      "과목 규칙은 후속 출제·검토 연결의 참고 지침이며 현재 명령은 모델을 호출하지 않습니다.",
+            "notes": ["generation_connected와 independent_review_connected는 native Block Draft 경로이며 아직 false입니다.",
+                      "track attach/generate는 소재·설계 뒤 기존 Draft로 직접 작성·검토합니다. 기존 후보를 자동 변환하지 않습니다.",
+                      "언어이해는 기존 파일럿 경로를 사용하며 staged 생성은 아직 지원하지 않습니다.",
                       "기존 위키·누적 생성물 구조 검토·동결 평가 경로를 유지합니다."],
         }
 

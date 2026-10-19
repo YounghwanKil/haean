@@ -12,6 +12,12 @@
 
 LEET 언어이해는 아래의 별도 파일럿 범위로 지원합니다. PSAT 5급은 과목당 40문항, 7급은 과목당 25문항 명세를 구분합니다. 회차 등록·파일 출력·모델 통과를 납품 승인으로 표시하지 않습니다.
 
+## 소재와 판단을 먼저 설계하기
+
+기존 `prepare`로 만든 새 run에 `haean tools track attach RUN 상세명세.json`을 연결하고 `haean tools track generate RUN`을 실행하면 소재 → 핵심 판단·오답 설계 → 기존 문항 형식 작성 → 독립 검토 순서로 진행합니다. 기존 자료·수정·검토 경로를 유지하는 선택 기능입니다. 현재 LEET 추리논증과 PSAT 5·7급 세 과목을 지원하며, 언어이해와 전체 회차 배정은 이 새 연결의 범위에 포함하지 않습니다.
+
+명세 예시와 유형 대응, 별도 참고 색인, 실패 기록은 [트랙 통합 안내](https://github.com/YounghwanKil/haean/blob/main/docs/TRACK_INTEGRATION.md)를 확인하세요. 구현 완료와 출제 성능 향상은 별도로 검증합니다.
+
 ## PSAT 검토와 언어이해 파일럿
 
 PSAT 검토는 공통 독립 풀이·편집 역할에 급수·과목별 지침을 자동 연결한다. [과목별 검토 기준](https://github.com/YounghwanKil/haean/blob/main/docs/PSAT_REVIEW.md)을 참고한다. 새 지침의 실행 결과를 이전 회차에 소급하지 않는다.
