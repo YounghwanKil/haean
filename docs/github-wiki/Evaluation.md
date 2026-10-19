@@ -19,3 +19,7 @@
 실제로 실행한 결과와 한계는 [첫 제품군별 파일럿](https://github.com/YounghwanKil/haean/blob/main/docs/PILOT.md)과 [LEET 검토의견 반영 전후 비교](https://github.com/YounghwanKil/haean/blob/main/docs/EDITORIAL_FEEDBACK_PILOT.md)에 공개합니다. 후자는 한 과제의 각 3회 실행에서 나온 모델 평가상 개선 신호이며, 전문가 승인이나 다른 과목·한글 출력 품질의 증거는 아닙니다. 원문 문항과 팀 검토 자료는 로컬에 보관합니다.
 
 [단계형 출제 연결 검증](https://github.com/YounghwanKil/haean/blob/main/docs/STAGED_AUTHORING_SMOKE.md)은 두 공개 과제의 각 1회 실행입니다. LEET의 문장 모호성은 수정 후 재검토했고, 두 문항 모두 추론 가치의 부족을 기록했습니다. 기능 동작 확인이며 성능 비교·전문가 승인이 아닙니다.
+
+## 단계형 지침 후보 비교
+
+2026-10-19에는 LEET 추리논증·PSAT 5급 자료해석 두 공개 과제에서 baseline과 candidate를 각 3회 비교했습니다. 예정 12건을 모두 보존했고 고정 비교 결과는 `reject_regression`입니다. 후보는 기본 지침에 반영하지 않았습니다. [실행 조건·원문 감사의 한계·점수·사용량](https://github.com/YounghwanKil/haean/blob/main/docs/STAGED_BURDEN_COMPARISON.md)을 확인하세요. 양쪽 모델 적격은 각 5/6이며 전문가 승인이나 다른 과목의 성능 검증은 아닙니다.
