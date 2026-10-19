@@ -31,6 +31,10 @@ def add_parser(subparsers):
     export.add_argument("--corpus", type=Path, required=True)
     export.add_argument("--selection", type=Path, required=True)
     export.add_argument("--out", type=Path, required=True)
+    answers = commands.add_parser("ref-answers", help="별도 공식 정답 근거를 연결한 새 참고자료 내보내기")
+    answers.add_argument("source_refs", type=Path)
+    answers.add_argument("--evidence", type=Path, required=True)
+    answers.add_argument("--out", type=Path, required=True)
     attach = commands.add_parser("attach", help="기존 prepared run에 과목별 소재·설계 명세 연결")
     attach.add_argument("run", type=Path)
     attach.add_argument("brief", type=Path)
@@ -172,4 +176,7 @@ def dispatch(args):
     if operation == "ref-export":
         from .reference_bridge import export
         return export(args.corpus, args.selection, args.out)
+    if operation == "ref-answers":
+        from .reference_answers import enrich
+        return enrich(args.source_refs, args.evidence, args.out)
     raise ValueError(f"알 수 없는 track 명령: {operation}")

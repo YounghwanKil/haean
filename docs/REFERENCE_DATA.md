@@ -36,6 +36,25 @@ haean tools track ref-build data/reference-export-01/refs.jsonl \
 
 내보낸 자료에는 선택 파일, 선택된 corpus 행의 사본, 원본 PDF·전사 packet의 경로와 해시, 기존 ID와 locator, 검증 상태가 함께 남는다. 새 색인으로 가져와도 `item=None`이며, 기존 원문을 새 트랙의 문항 모델로 변환했다고 표시하지 않는다. `text`는 원문을 유지한다. 추가 `corpus_evidence`를 읽을 수 있는 현재 하네스가 필요하며, 구버전 실행기에 새 자료를 강제로 넣지 않는다.
 
+## 나중에 확인한 공식 정답 연결
+
+공식 정답을 확보했다면 기존 전사나 corpus의 미확인 값을 덮어쓰지 않는다. 공식 정답표와 문제지의 연도·급수·과목·책형·문항 번호를 대조한 근거를 별도로 준비해 새 자료를 만든다.
+
+```bash
+haean tools track ref-answers data/reference-export-01/refs.jsonl \
+  --evidence data/official-answer-evidence.json --out data/reference-answers-01
+haean tools track ref-build data/reference-answers-01/refs.jsonl \
+  --out data/track-references-02.sqlite
+```
+
+`ref-answers`는 답을 풀거나 인터넷에서 답안을 찾는 명령이 아니다. 정제한 근거와 PDF의 정답 행을 대조하고 출처 사본을 보존하는 단계다. 해안에게 “공식 확정 정답을 찾아 원문과 책형을 확인하고 `ref-answers` 근거를 준비해줘”라고 요청할 수 있다. PDF 텍스트 대조에는 Poppler의 `pdftotext`가 필요하다. 이 의존성은 `ref-answers`와 공식 정답 근거가 포함된 자료의 `ref-build`·`ref-search`에 적용된다. 없는 경우 검증을 실패로 처리하며 정답을 추정하지 않는다.
+
+입력은 `schema_version=1`, `usage=development`인 감사 JSON이다. `sources`에는 공식 게시물·확정 문구·첨부·다운로드 기록·정답 PDF·추출 텍스트를, `records`에는 기존 ID·시험 식별·정답 행 위치·문제지 대응·시각 확인 근거를 둔다. 각 파일의 경로와 해시도 필요하다. 현재 지원 범위는 **정답표 좌측의 1–20번 행**이며, 감사 ID 집합과 입력 refs ID 집합이 같아야 한다. 다른 표나 부분 선택을 조용히 추정하지 않는다. 세부 검증 계약은 [구현](../src/haean/reference_answers.py)과 [합성 예제](../tests/test_reference_answers.py)에 있다.
+
+새 참고 레코드의 `answer`·`answer_verified`와 `official_answer_evidence`가 후속 확인을 나타낸다. 원문 `text`와 `corpus_evidence`의 `answer_verified=false`는 **전사 당시 상태**로 보존된다. 같은 문항의 서로 다른 확인 시점을 뜻하므로 과거 기록을 수정해 두 값을 맞추지 않는다. 새 출처 파일들은 실행 스냅샷에도 포함된다.
+
+원문과 공식 문제지의 바이트 일치, 공식 정답 행 대조, 분류의 정확성, 사람 전문가의 품질 승인은 각각 다르다. 답을 확인해도 임시 유형·빈 영역 분류는 그대로다. 파일 검증은 확보한 근거의 일관성을 검사하며 공식 사이트의 진위나 새로운 사람 검토를 자동으로 보증하지 않는다.
+
 ## 검색 확인과 출제 연결
 
 ```json

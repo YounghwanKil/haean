@@ -173,6 +173,10 @@ def _source_files(references):
                 evidence = hit.get("corpus_evidence")
                 if evidence:
                     files.extend(evidence[key] for key in ("packet", "source_record", "selection"))
+                official = hit.get("official_answer_evidence")
+                if official:
+                    files.extend((official["manifest"], official["source_refs"]))
+                    files.extend(official["files"].values())
                 for source in files:
                     path = str(Path(source["file"]).resolve())
                     digest = source["sha256"]

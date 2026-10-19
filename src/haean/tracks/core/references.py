@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, StrictInt, model_validator
 
 from ...models import StrictModel
 from .. import NAMES
@@ -62,6 +62,23 @@ class CorpusEvidence(StrictModel):
         return (self.source_record, self.packet, self.selection)
 
 
+class OfficialAnswerEvidence(StrictModel):
+    """Separate, frozen official-answer audit; never rewrites corpus evidence."""
+    version: Literal[1] = 1
+    manifest: ReferenceProvenance
+    source_refs: ReferenceProvenance
+    manifest_base: str = Field(min_length=1)
+    source_refs_original_path: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    files: dict[str, ReferenceProvenance] = Field(min_length=1)
+    verification_scope: Literal["official_answer_row_and_question_bytes"] = "official_answer_row_and_question_bytes"
+    semantic_accuracy_verified: Literal[False] = False
+    human_approved: Literal[False] = False
+
+    def provenances(self):
+        return (self.manifest, self.source_refs, *self.files.values())
+
+
 def _identity(track, grade):
     if track not in NAMES:
         raise ValueError("알 수 없는 트랙: " + track)
@@ -87,11 +104,12 @@ class RefRecord(StrictModel):
     stem_type: str = ""
     text: str = Field(min_length=1)
     item: dict | None = None
-    answer: int | None = Field(default=None, ge=1, le=5)
+    answer: StrictInt | None = Field(default=None, ge=1, le=5)
     answer_verified: bool = False
     tags: list[str] = Field(default_factory=list)
     notes: str = ""
     corpus_evidence: CorpusEvidence | None = None
+    official_answer_evidence: OfficialAnswerEvidence | None = None
 
     @model_validator(mode="after")
     def identity(self):
@@ -101,8 +119,10 @@ class RefRecord(StrictModel):
         if self.corpus_evidence:
             if (self.id != self.corpus_evidence.source_record_id or self.role != "item"
                     or not self.track.startswith("psat_") or self.item is not None
-                    or self.answer is not None or self.answer_verified):
+                    or (self.official_answer_evidence is None and (self.answer is not None or self.answer_verified))):
                 raise ValueError("corpus 전사 증거의 ID·역할·정답 상태가 다릅니다")
+        if self.official_answer_evidence and (not self.corpus_evidence or self.answer is None or not self.answer_verified):
+            raise ValueError("공식 정답 근거에는 corpus 전사와 별도 정답이 필요합니다")
         return self
 
 
@@ -261,7 +281,7 @@ class ReferenceIndex:
         if self.readonly:
             raise ValueError("읽기 전용 참고 색인에는 쓸 수 없습니다")
         paths = [jsonl] if isinstance(jsonl, (str, Path)) else list(jsonl)
-        records, errors, verified = [], [], {}
+        records, errors, verified, extracted = [], [], {}, {}
         for raw in paths:
             path = Path(raw).resolve()
             _allowed_source(str(path))
@@ -283,6 +303,9 @@ class ReferenceIndex:
                         raise ValueError("출처 파일 SHA256 불일치")
                     row.provenance.file = str(source)
                     verify_corpus_evidence(row, path.parent, verified)
+                    if row.official_answer_evidence:
+                        from ...reference_answers import verify_official_answer_evidence
+                        verify_official_answer_evidence(row, path.parent, verified, extracted)
                     records.append(row)
                 except (ValueError, OSError, KeyError, TypeError) as exc:
                     errors.append({"line": number, "file": str(path), "error": str(exc)[:300]})
@@ -339,7 +362,7 @@ class ReferenceIndex:
         target = grams(query.text) if query.text else None
         records.sort(key=lambda r: (-(overlap(target, grams(r.text)) if target else 0), -(r.year or 0), r.id))
         hits = records[:query.k]
-        verified_sources = {}
+        verified_sources, extracted = {}, {}
         for record in hits:
             source = Path(record.provenance.file).resolve()
             if source not in verified_sources:
@@ -353,6 +376,9 @@ class ReferenceIndex:
                 raise ValueError(f"{record.id}: 출처 파일 SHA256이 바뀌어 참고 자료를 사용할 수 없습니다. 재검토 후 새 색인을 만드세요.")
             try:
                 verify_corpus_evidence(record, self.path.parent, verified_sources)
+                if record.official_answer_evidence:
+                    from ...reference_answers import verify_official_answer_evidence
+                    verify_official_answer_evidence(record, self.path.parent, verified_sources, extracted)
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 raise ValueError(f"{record.id}: corpus 증거를 확인하지 못해 참고 자료를 사용할 수 없습니다: {exc}") from exc
         used = {f: getattr(query, f) for f in FACETS if getattr(query, f) not in (None, "")}
