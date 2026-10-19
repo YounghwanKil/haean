@@ -13,6 +13,7 @@ from .corpus import Corpus
 from .full_exam import assemble, brief_difficulty, load_plan
 from .models import Brief, Draft, BlindReview, EditorialReview
 from .pipeline import prepare, run_pipeline, save, writer_prompt
+from .revision_feedback import load_revision_feedback, requires_revision
 
 
 def _read(path):
@@ -180,6 +181,7 @@ def preflight(previous):
                 raise ValueError("composition 재개 상태 불일치")
             ready = state["state"] == "awaiting_human_review"
             seed, review, lineage = None, None, None
+            revision_feedback = None
             if ready:
                 candidate_path = run / "candidate.json"
                 candidate = Draft.model_validate_json(candidate_path.read_text())
@@ -188,11 +190,16 @@ def preflight(previous):
                 errors = adapter.assembly_errors(run, expected, candidate, state)
                 if errors:
                     raise ValueError("; ".join(errors))
-            else:
+                revision_feedback = load_revision_feedback(run, candidate)
+                ready = not requires_revision(revision_feedback)
+            if not ready:
                 seed, review, lineage = _seed(run, expected, context, group, state)
+                revision_feedback = load_revision_feedback(run, seed)
+                if revision_feedback is not None:
+                    lineage["revision_feedback"] = revision_feedback
             entries.append({"job": job, "run": run, "group": group, "state": state,
                             "context": context, "ready": ready, "seed": seed,
-                            "review": review, "lineage": lineage})
+                            "review": review, "lineage": lineage, "revision_feedback": revision_feedback})
         if seen != set(slot_map) or any(len(owners) != 1 for owners in shared.values()):
             raise ValueError("composition 재개 ID 누락·공통지문 묶음 분리")
         return plan, plan_bytes, declaration, entries
@@ -244,7 +251,7 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
         expected = adapter.attach_bundle(run, plan_path=out / "plan.json", packet_path=declaration["packet"]["path"], slots=group)
         jobs.append({"bundle": len(jobs) + 1, "run": str(run), "ids": source["ids"], "slots": source["slots"],
                      "state": "prepared", "parent_run": str(parent), "reused": False, "composition": expected})
-        seeds[str(run)] = entry["seed"], entry["review"]
+        seeds[str(run)] = entry["seed"], entry["review"], entry["revision_feedback"]
     manifest = {"exam": plan["exam"], "subject": plan["subject"], "total": len(plan["slots"]), "jobs": jobs,
                 "complete": False, "human_approved": False, "parent": str(previous), "composition": declaration}
     save(out / "production.json", manifest)
@@ -273,8 +280,9 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
             callbacks.update(additional_validation=validate, after_review_saved=after_review)
             verify_parent()
             provider = CodexProvider(model, max_calls=4 + 3 * max_revisions, timeout=1200, trace_dir=run / "codex-traces")
-            seed, review = seeds[str(run)]
-            run_pipeline(run, provider, max_revisions, initial_draft=seed, initial_review=review, **callbacks)
+            seed, review, revision_feedback = seeds[str(run)]
+            run_pipeline(run, provider, max_revisions, initial_draft=seed, initial_review=review,
+                         revision_feedback=revision_feedback, **callbacks)
             state = _read(run / "status.json")
             return {**job, "state": state["state"], "errors": state.get("errors", [])}
         except Exception as exc:

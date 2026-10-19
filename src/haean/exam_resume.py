@@ -9,6 +9,7 @@ from .corpus import Corpus
 from .full_exam import assemble, load_plan, brief_difficulty
 from .models import Brief, Draft
 from .pipeline import prepare, run_pipeline, save
+from .revision_feedback import load_revision_feedback, requires_revision
 
 
 def read(path):
@@ -100,9 +101,12 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                 raise ValueError('기존 검토 해시 불일치: ' + str(parent))
             if [i.id for i in Draft.model_validate_json(candidate.read_text()).items] != source['ids']:
                 raise ValueError('기존 후보의 ID·순서 불일치')
-            jobs.append({**source, 'bundle': len(jobs)+1, 'state': state['state'], 'reused': True})
-            continue
+            revision_feedback = load_revision_feedback(parent, read(candidate))
+            if not requires_revision(revision_feedback):
+                jobs.append({**source, 'bundle': len(jobs)+1, 'state': state['state'], 'reused': True})
+                continue
         seed, review, seed_path = seed_from(parent)
+        revision_feedback = load_revision_feedback(parent, seed)
         original_group = [slot_map[i] for i in source['ids']]
         # Never split an existing draft or a shared passage pair.
         groups = [original_group] if seed or any(s.get('shared_passage_id') for s in original_group) else [original_group[i:i+2] for i in range(0, len(original_group), 2)]
@@ -127,6 +131,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
             context['resume_lineage'] = {'parent': str(parent), 'parent_state': state['state'],
                 'seed_sha256': sha(seed_path) if seed_path else None,
                 'seed_path': str(seed_path) if seed_path else None}
+            if revision_feedback is not None:
+                context['resume_lineage']['revision_feedback'] = revision_feedback
             save(run / 'context.json', context)
             save(run / 'lineage.json', context['resume_lineage'])
             provenance = read(run / 'provenance.json')
@@ -137,7 +143,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
             job = {'bundle': len(jobs)+1, 'run': str(run), 'ids': [s['id'] for s in group],
                 'slots': [s['number'] for s in group], 'state': 'prepared', 'parent_run': str(parent), 'reused': False}
             jobs.append(job)
-            seeds[str(run)] = (seed, review)
+            seeds[str(run)] = (seed, review, revision_feedback)
     manifest = {'exam': plan['exam'], 'subject': plan['subject'], 'total': len(plan['slots']),
         'jobs': jobs, 'complete': False, 'human_approved': False, 'parent': str(previous)}
     save(out / 'production.json', manifest)
@@ -145,9 +151,16 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
     def work(job):
         run = Path(job['run'])
         try:
-            seed, review = seeds[str(run)]
+            seed, review, revision_feedback = seeds[str(run)]
+            # Preserve the selected seed even if provider construction fails
+            # before run_pipeline has a chance to save its inherited inputs.
+            if seed is not None:
+                save(run / 'inherited-draft.json', seed)
+                if review is not None:
+                    save(run / 'inherited-review.json', review)
             provider = CodexProvider(model, max_calls=4+3*max_revisions, timeout=1200, trace_dir=run/'codex-traces')
-            draft = run_pipeline(run, provider, max_revisions, initial_draft=seed, initial_review=review)
+            draft = run_pipeline(run, provider, max_revisions, initial_draft=seed, initial_review=review,
+                                 revision_feedback=revision_feedback)
             state = read(run / 'status.json')
             if [i.id for i in draft.items] != job['ids']:
                 state.update(state='needs_revision', errors=[*state.get('errors', []), '회차 ID·순서 불일치'])

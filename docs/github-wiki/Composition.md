@@ -17,6 +17,8 @@ haean tools exam-build data/exam-plan.json --composition-packet runs/composition
 
 코드 테스트·설계 재현·ID 연결 확인은 문항 품질이나 전문가 승인, 실제 한글 렌더 확인과 별개입니다.
 
+검토가 끝난 뒤 `feedback --candidate-sha`로 추가한 A/B 의견도 현 후보에 연결해 재개 출제자에게 전달합니다. 원 검토 파일은 보존하고, 새 풀이에는 이 의견이나 정답 근거를 주지 않습니다. C 의견은 참고이며 자동 재수정을 강제하지 않습니다. [후속 의견의 버전 연결과 재개](https://github.com/YounghwanKil/haean/blob/main/docs/PRODUCTION.md#검토-뒤에-추가한-의견)를 확인하세요.
+
 
 ## 7급 세 과목 구성
 

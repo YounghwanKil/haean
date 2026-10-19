@@ -8,7 +8,7 @@ from haean import composition_adapter as adapter
 from haean import composition_resume as resumed
 from haean.exam_resume import resume
 from haean.full_exam import bundles
-from haean.pipeline import run_pipeline, save
+from haean.pipeline import feedback, run_pipeline, save
 from test_composition_adapter import inputs, packet, prepared, Provider, read
 
 
@@ -161,6 +161,55 @@ def test_repeated_interruption_uses_sealed_original_seed_and_review(inputs, tmp_
     assert final_lineage["seed_path"] == lineage["seed_path"]
     assert final_lineage["review_sha256"] == lineage["review_sha256"]
     assert hashes(previous) == before and hashes(first) == first_before
+
+
+@pytest.mark.parametrize("severity", ["B", "C"])
+def test_composition_postreview_feedback_preserves_receipts_and_blind_isolation(inputs, tmp_path, draft, monkeypatch, severity):
+    previous = history(inputs, tmp_path, draft, modes={})
+    parent = Path(read(previous / "production.json")["jobs"][0]["run"])
+    item_id = read(parent / "candidate.json")["items"][0]["id"]
+    assert read(parent / "review-r0.json")["errors"] == []
+    entry = feedback(parent, item_id, "합성 후속 의견 원문", "synthetic model", severity, origin="model")
+    before = hashes(previous)
+    providers = install_runtime(monkeypatch, draft)
+    out = tmp_path / "next"
+    result = resume(previous, "unused", out, workers=1, max_revisions=0)
+    assert result["ready_for_human_review"], result["errors"]
+    assert hashes(previous) == before
+    if severity == "C":
+        assert not providers
+        assert all(job["reused"] for job in read(out / "production.json")["jobs"])
+        return
+    assert len(providers) == 1
+    calls = providers[0].calls
+    assert [call[0] for call in calls] == ["revise", "blind", "editor"]
+    assert calls[0][2]["review"]["errors"] == []
+    assert calls[0][2]["revision_feedback"]["records"][0]["entry"] == entry
+    assert set(calls[1][2]) == {"items"}
+    assert "합성 후속 의견 원문" not in json.dumps(calls[1][2], ensure_ascii=False)
+    assert calls[2][2]["revision_feedback"] == calls[0][2]["revision_feedback"]
+    run = Path(read(out / "production.json")["jobs"][0]["run"])
+    assert read(run / "lineage.json")["revision_feedback"] == read(run / "revision-feedback.json")
+    assert read(run / "inherited-review.json") == read(parent / "review-r0.json")
+    # Reusing a completed rewrite must not replay its inherited B indefinitely.
+    providers.clear()
+    again = resume(out, "unused", tmp_path / "again", workers=1, max_revisions=0)
+    assert again["ready_for_human_review"] and not providers
+
+
+def test_composition_feedback_does_not_attach_to_later_unreviewed_draft(inputs, tmp_path, draft, monkeypatch):
+    previous = history(inputs, tmp_path, draft, modes={})
+    parent = Path(read(previous / "production.json")["jobs"][0]["run"])
+    item_id = read(parent / "candidate.json")["items"][0]["id"]
+    feedback(parent, item_id, "현 후보에 대한 합성 B 의견", "tester", "B")
+    changed = read(parent / "draft-r0.json")
+    changed["items"][0]["explanation"] += " 이후 미검토 초안"
+    save(parent / "draft-r1.json", changed)
+    out = tmp_path / "blocked"
+    monkeypatch.setattr(resumed, "prepare", lambda *a, **kw: pytest.fail("must fail before preparation"))
+    with pytest.raises(ValueError, match="seed.*candidate"):
+        resume(previous, "unused", out, workers=1, max_revisions=0)
+    assert not out.exists()
 
 
 def test_provider_constructor_failure_recovers_seed_before_inherited_files(inputs, tmp_path, draft, monkeypatch):
