@@ -67,6 +67,15 @@ def test_large_session_observes_recent_first_then_fills_history(tmp_path,monkeyp
     assert b''.join(Path(e['snapshot']).read_bytes() for e in sorted(pieces,key=lambda e:e['offset']))==raw
     assert not M.monitor(repo=repo,sessions=logs)['new']
 
+
+def test_oversized_final_session_row_is_reported_not_silently_skipped(tmp_path,monkeypatch):
+    repo,logs,source=setup(tmp_path)
+    monkeypatch.setattr(M,'CHUNK',1024)
+    with source.open('a') as f:f.write(json.dumps({'text':'x'*2048})+'\n')
+    result=M.monitor(repo=repo,sessions=logs)
+    assert not result['new']
+    assert any(x['issue']=='incomplete_or_oversized_session_tail' for x in result['issues'])
+
 def test_bounded_work_observation_preserves_overflow_and_reports_large_file(tmp_path):
     repo,logs,source=setup(tmp_path)
     (repo/'runs/a').mkdir(parents=True);(repo/'runs/a/handoff.md').write_text('small synthetic handoff')

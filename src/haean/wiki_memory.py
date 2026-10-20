@@ -71,6 +71,9 @@ def monitor(*, repo=None, sessions=None, limit=20):
                     with p.open('rb') as tail:
                         tail.seek(size-CHUNK);tail.readline()
                         offset=tail.tell()
+                    if offset >= size:
+                        errors.append({'path':key,'issue':'incomplete_or_oversized_session_tail','bytes':size})
+                        continue
                     history_end=offset
                 changed_prefix=False
                 with p.open('rb') as f:
