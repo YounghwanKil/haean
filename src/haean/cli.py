@@ -187,6 +187,15 @@ def main():
     p.add_argument("--comparison", type=Path)
     p.add_argument("--evidence-root", type=Path)
     p.add_argument("--top", type=int, default=5)
+    p = sub.add_parser("evolve-select", help="개발 과제별 강점을 보존해 다음 개선의 부모 후보 선택")
+    p.add_argument("pool", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--seed", type=int, default=0)
+    p = sub.add_parser("evolve-merge", help="충돌 없는 지침 구성요소를 별도 미평가 후보로 결합")
+    p.add_argument("ancestor", type=Path)
+    p.add_argument("left", type=Path)
+    p.add_argument("right", type=Path)
+    p.add_argument("--out", type=Path, required=True)
     p = sub.add_parser("experiment")
     p.add_argument("name")
     p.add_argument("--baseline", type=Path, required=True)
@@ -363,6 +372,13 @@ def dispatch(a):
     if a.command in {"style-prepare", "style-check"}:
         from .style import style_prepare, style_check
         return style_prepare(a.run, a.item, a.field) if a.command == "style-prepare" else style_check(a.folder)
+    if a.command in {"evolve-select", "evolve-merge"}:
+        import runpy
+        script = Path(__file__).resolve().parents[2] / "skills/haean-evolve/scripts/search_experiment.py"
+        tools = runpy.run_path(str(script))
+        if a.command == "evolve-select":
+            return tools["select_experiment"](a.pool, a.out, seed=a.seed)
+        return tools["merge_experiment"](a.ancestor, a.left, a.right, a.out)
     if a.command == "evolve-reflect":
         import runpy
         script = Path(__file__).resolve().parents[2] / "skills/haean-evolve/scripts/reflect_experiment.py"
