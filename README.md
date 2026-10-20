@@ -190,10 +190,18 @@ LEET·PSAT 자료해석 샘플의 한글 열기와 내용 배치를 확인했습
 
 ## 검증
 
+기본 설치 확인은 `./haean doctor --check`로 합니다. 코드 변경 후 **전체 테스트**를 실행하려면 그림과 HWPX 조판 모듈도 설치하세요. 기본 설치만 한 환경에서는 조판 테스트가 `No module named 'haean_typeset'`로 중단될 수 있습니다.
+
 ```bash
+./haean setup-figures
+./haean setup-typeset
 .venv/bin/pytest -q
-./haean doctor
+./haean doctor --check
 ```
+
+위 명령은 프로젝트 가상환경에 검증용 의존성을 추가합니다. 팀 원문이나 실제 한글 양식을 가져오지 않으며, 테스트 통과는 한글 앱에서의 인쇄 배치 확인과 별개입니다. 그림 기능의 Graphviz·한국어 폰트, 실제 HWP 출력의 JDK·양식은 각 기능 안내에 따라 별도로 준비합니다.
+
+Java HWP 도구가 없는 새 설치에서는 관련 테스트가 건너뛰어집니다. 건너뛴 이유는 `.venv/bin/pytest -q -rs`로 확인하며, 해당 테스트까지 실행하려면 [양식 도구](docs/LAYOUT.md)에 따라 `./haean setup-layout`도 준비하세요.
 
 [팀 작업법](docs/WORKFLOW.md), [품질 게이트](docs/QUALITY.md)를 참고하세요. 실행·수정·검토·점수와 미완료 범위를 남기며, 테스트 통과와 실제 전문가 품질 검증을 구분합니다.
 

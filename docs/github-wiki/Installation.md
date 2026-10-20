@@ -26,3 +26,18 @@ Python 경로를 지정할 때는 `HAEAN_PYTHON=python3.13 ./install.sh`로 설�
 파란 하단 HUD에는 tmux가 필요합니다. macOS에서는 `brew install tmux`, Debian/Ubuntu에서는 `sudo apt install tmux`로 준비합니다. `haean hud`로 표시 조건을 확인하고 `haean banner`로 모델 호출 없이 로고를 미리 볼 수 있습니다. 이미 tmux 안이라면 기존 배치를 보존하므로 해안의 별도 HUD를 추가하지 않습니다.
 
 설치에는 팀 원문·문항 DB가 포함되지 않습니다. 자료 준비와 Codex 대화창 입력 방법은 [사용법](Usage), 한글 출력 도구는 [양식 출력](Layout)을 확인하세요.
+
+## 코드 변경 후 전체 테스트
+
+기본 사용 준비는 `haean doctor --check`로 확인합니다. 전체 개발 테스트에는 선택 기능인 그림·HWPX 조판 모듈도 필요하므로 저장소 안에서 다음 순서로 실행합니다.
+
+```bash
+./haean setup-figures
+./haean setup-typeset
+.venv/bin/pytest -q
+./haean doctor --check
+```
+
+`No module named 'haean_typeset'`로 테스트 수집이 중단되면 `./haean setup-typeset`을 먼저 실행하세요. 이 설치는 프로젝트 가상환경에만 적용되며 팀 원문·실제 양식은 포함하지 않습니다. 합성 자료를 이용한 테스트와 한글 앱에서의 인쇄 배치 검증은 별개입니다.
+
+Java HWP 도구가 없으면 해당 테스트는 건너뜁니다. `.venv/bin/pytest -q -rs`로 사유를 확인하고, 필요하면 [양식 출력](Layout)에 따라 `./haean setup-layout`을 준비하세요.
