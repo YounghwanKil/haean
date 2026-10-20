@@ -103,14 +103,16 @@ def test_installed_korean_font_renders_without_private_team_inventory(tmp_path, 
     assert not [w for w in observed if 'Glyph' in str(w.message) and 'missing' in str(w.message)]
 
 
-def test_editor_images_exclude_nonprinted_memos_and_group_argument_choices(tmp_path, draft):
+@pytest.mark.parametrize("stage", ["editor", "shortcut-solve", "shortcut-audit"])
+def test_editor_images_exclude_nonprinted_memos_and_group_argument_choices(tmp_path, draft, stage):
     pytest.importorskip('matplotlib')
     import shutil
     if not shutil.which('dot'):pytest.skip('Graphviz required')
     from test_figures import graph
     draft.items[0].figures=[graph().model_copy(update={'id':f'g{n}','placement':f'option_{n}',
                             'layout_note':'INTERNAL','note':'LEGACY PRIVATE'}) for n in range(1,6)]
-    paths,manifest=review_images('editor',{'draft':draft.model_dump()},tmp_path)
+    payload = {'items': draft.model_dump()['items']} if stage == 'shortcut-solve' else {'draft': draft.model_dump()}
+    paths,manifest=review_images(stage,payload,tmp_path)
     assert len(paths)==1 and manifest[0]['placements']==[f'option_{n}' for n in range(1,6)]
     for receipt in tmp_path.glob('item-*/*.json'):
         data=receipt.read_text();assert 'INTERNAL' not in data and 'LEGACY PRIVATE' not in data

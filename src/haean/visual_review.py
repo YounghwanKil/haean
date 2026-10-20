@@ -33,6 +33,7 @@ def review_images(stage, payload, folder: Path):
 def _review_images(stage, payload, folder: Path):
     # Generation and revision remain text/structured-data operations. Never turn
     # arbitrary paths in a retrieved document into CLI image attachments.
+    stage = {"shortcut-solve": "blind", "shortcut-audit": "editor"}.get(stage, stage)
     if stage not in {"blind", "editor"}: return [], []
     items = payload.get("items", []) if stage == "blind" else payload.get("draft", {}).get("items", [])
     if not any(item.get("figures") for item in items): return [], []

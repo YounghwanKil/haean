@@ -77,6 +77,10 @@ def main():
     p = sub.add_parser("check", help="수동 작성본 검증 및 독립 검토 패킷 생성")
     p.add_argument("run", type=Path)
     p.add_argument("draft", type=Path)
+    p = sub.add_parser("shortcut-review", help="정답 비공개 짧은 풀이와 핵심 판단 대조; 선택 검토 2회")
+    p.add_argument("run", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--model", default="gpt-6-astra")
     p = sub.add_parser("distractor-check", help="SHA로 연결한 정상·오독 비교식 점검; 선택 검토 보조지")
     p.add_argument("candidate", type=Path)
     p.add_argument("sidecar", type=Path)
@@ -257,6 +261,9 @@ def dispatch(a):
     if a.command == "reading":
         from .reading_cli import dispatch as reading_dispatch
         return reading_dispatch(a)
+    if a.command == "shortcut-review":
+        from .shortcut_review import shortcut_review
+        return shortcut_review(a.run, a.out, model=a.model)
     if a.command == "distractor-check":
         from .distractor_checks import check_distractors
         return check_distractors(a.candidate, a.sidecar)
