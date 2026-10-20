@@ -161,6 +161,8 @@ PSAT 입력에는 지문 전문이 없는 통계가 많습니다. HWP 텍스트 
 
 ## 평가와 스스로 개선하는 구조
 
+기존 실험은 `haean tools evolve-reflect`로 비교 조건·품질 차원·비용·실패 원문을 함께 진단할 수 있습니다. [사용법과 실제 확인 범위](docs/REFLECTION_DIAGNOSTICS.md)를 참고하세요.
+
 ![해안 출제·독립 풀이·검토·평가·개선 순환](assets/haean-workflow.svg)
 
 [평가 프로토콜](evals/protocol.md)은 정답 타당성을 필수 조건으로 두고 8개 품질 차원을 별도로 평가합니다. LEET와 PSAT의 7개 제품군을 나눠 보며 고정 과제·모델·수정 예산으로 비교합니다.

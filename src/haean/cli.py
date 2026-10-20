@@ -180,6 +180,13 @@ def main():
     p = sub.add_parser("compare")
     p.add_argument("baseline", type=Path)
     p.add_argument("candidate", type=Path)
+    p = sub.add_parser("evolve-reflect", help="기존 실험 조건·차원·비용·실패 원문을 읽기 전용으로 진단")
+    p.add_argument("baseline", type=Path)
+    p.add_argument("candidate", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--comparison", type=Path)
+    p.add_argument("--evidence-root", type=Path)
+    p.add_argument("--top", type=int, default=5)
     p = sub.add_parser("experiment")
     p.add_argument("name")
     p.add_argument("--baseline", type=Path, required=True)
@@ -365,6 +372,14 @@ def dispatch(a):
     if a.command in {"style-prepare", "style-check"}:
         from .style import style_prepare, style_check
         return style_prepare(a.run, a.item, a.field) if a.command == "style-prepare" else style_check(a.folder)
+    if a.command == "evolve-reflect":
+        import runpy
+        script = Path(__file__).resolve().parents[2] / "skills/haean-evolve/scripts/reflect_experiment.py"
+        if not script.is_file():
+            raise ValueError("해안 저장소의 haean-evolve 스킬 스크립트가 필요합니다. Git clone 설치를 확인하세요.")
+        reflect = runpy.run_path(str(script))["reflect"]
+        return reflect(a.baseline, a.candidate, a.out, comparison_path=a.comparison,
+                       evidence_root=a.evidence_root, top_n=a.top)
     if a.command in {"evaluate", "compare", "experiment"}:
         from .evaluation import evaluate_suite, compare, experiment
         if a.command == "compare": return compare(json.loads(a.baseline.read_text()), json.loads(a.candidate.read_text()))
