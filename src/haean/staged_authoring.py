@@ -341,6 +341,9 @@ def run_staged(run: Path, provider, max_revisions=2) -> Draft:
                         "generate": writer_prompt(legacy) + "\n\n" + WRITING_CONTRACT,
                         "blind": review_prompt("blind", legacy), "editor": review_prompt("editor", legacy),
                         "revise": writer_prompt(legacy) + "\n지적을 반영해 전체 문항을 수정하라. 해설도 현행 지문에 맞게 다시 작성하라."}
+        from .wiki_bridge import authoring_instructions
+        for stage in ("material", "design", "generate", "revise"):
+            instructions[stage] = authoring_instructions(instructions[stage], run, track=brief.track, grade=brief.grade, stage=stage)
         schemas = {"material": MaterialResult.model_json_schema(), "design": DesignResult.model_json_schema(),
                    "generate": Draft.model_json_schema(), "blind": BlindReview.model_json_schema(),
                    "editor": EditorialReview.model_json_schema(), "revise": Draft.model_json_schema()}

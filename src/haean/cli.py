@@ -212,11 +212,8 @@ def main():
     p.add_argument("run", type=Path)
     p.add_argument("--question-template", type=Path, required=True)
     p.add_argument("--solution-template", type=Path, required=True)
-    p = sub.add_parser("wiki", help="로컬 근거 기반 위키 관리")
-    p.add_argument("operation", choices=["init", "put", "lint", "search"])
-    p.add_argument("--root", type=Path, default=Path("data/wiki"))
-    p.add_argument("--packet", type=Path)
-    p.add_argument("--query")
+    from .wiki_bridge import add_parser as add_wiki_parser
+    add_wiki_parser(sub)
     for command in ('novelty-index', 'novelty-check'):
         p = sub.add_parser(command, help='누적 생성물·언어이해 book 기록 및 재사용 후보 대조; 독창성 판정 아님')
         p.add_argument('runs', nargs='+', type=Path, help='표준 run·production 또는 언어이해 book.json·production·attempt')
@@ -316,14 +313,8 @@ def dispatch(a):
         return create_request(a.folder, a.out, slots=a.slots, text=text,
                               reviewer=a.reviewer, origin=a.origin, severity=a.severity)
     if a.command == "wiki":
-        from . import wiki
-        if a.operation == "put":
-            if not a.packet: raise ValueError("--packet is required")
-            return wiki.put(a.root, a.packet)
-        if a.operation == "search":
-            if not a.query: raise ValueError("--query is required")
-            return wiki.search(a.root, a.query)
-        return getattr(wiki, a.operation)(a.root)
+        from .wiki_bridge import dispatch as wiki_dispatch
+        return wiki_dispatch(a)
     if a.command == 'exam-resume':
         from .exam_resume import resume
         return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement,

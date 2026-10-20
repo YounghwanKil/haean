@@ -92,6 +92,18 @@ def show_skills(name=None):
     return 0
 
 
+def observe_memory():
+    """Queue local changes; the agent reads and synthesizes them in haean-wiki."""
+    try:
+        result = subprocess.run([str(ROOT / "scripts/haean-tool"), "wiki", "monitor"],
+                                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                text=True, timeout=30)
+        if result.returncode:
+            print("  위키 변경 관측 미완료: 작업창에서 wiki monitor 결과를 확인하세요.")
+    except (OSError, subprocess.SubprocessError):
+        print("  위키 변경 관측 미완료: 작업창에서 다시 확인하세요.")
+
+
 def codex_command(codex, task, madmax=False, skill="haean", *, no_daemon=False):
     command = [codex, "--no-alt-screen", "-C", str(ROOT), "-m", "gpt-6-astra",
                "-c", "tui.status_line=" + json.dumps(STATUS_ITEMS)]
@@ -587,6 +599,7 @@ def main():
     # Imported here so inspection commands remain dependency-free.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from terminal_ui import run as run_terminal
+    observe_memory()
     return run_terminal(codex_command(codex, task, madmax, skill, no_daemon=no_daemon), env, ROOT, banner, madmax, skill)
 
 

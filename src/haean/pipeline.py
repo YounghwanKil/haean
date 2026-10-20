@@ -98,6 +98,8 @@ def run_pipeline(run: Path, provider, max_revisions=2, *, initial_draft=None, in
     context_bytes = (run / "context.json").read_bytes()
     context = json.loads(context_bytes)
     instructions = writer_prompt(brief)
+    from .wiki_bridge import authoring_instructions, legacy_scope
+    instructions = authoring_instructions(instructions, run, **legacy_scope(brief), stage="generate")
     try:
         from .authoring_sources import supplied_source_ids
         allowed = supplied_source_ids(context)
