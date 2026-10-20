@@ -4,6 +4,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python: ['3.11', '3.13']
     steps:
@@ -13,7 +14,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install harness and HWPX test dependencies
-        run: python -m pip install -e '.[dev,layout]' -e ./typeset
-      - run: sudo apt-get update && sudo apt-get install -y graphviz fonts-nanum
-      - run: pytest -q
+      - name: Install the project environment used by the launcher
+        run: ./haean setup
+      - name: Install figure and HWPX test dependencies
+        run: |
+          ./haean setup-figures
+          ./haean setup-typeset
+      - run: sudo apt-get update && sudo apt-get install -y graphviz fonts-nanum poppler-utils
+      - run: .venv/bin/pytest -q -rs
