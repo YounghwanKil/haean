@@ -39,6 +39,8 @@ scripts/haean-tool exam-ref-bind runs/plan.json --index data/references.sqlite -
 
 일부 문항만 이어서 수정할 때는 `exam-resume PREVIOUS --out NEW --slots 2 22`처럼 [번호 지정 재개](../../../docs/PRODUCTION.md#지정한-문항-묶음만-재개)를 사용한다. 번호가 속한 기존 묶음 전체를 지정하며 미선택 문항은 원 상태로 남는다. 완료 묶음의 강제 재생성 기능은 아니므로 새 수정 의견은 먼저 검토 버전에 연결한다.
 
+원 검토본의 상태까지 보존하거나 C급 개선을 명시적으로 반영하려면 `exam-revision-request PREVIOUS --out REQUEST.json --slots 2 22 --file NOTE.txt --reviewer NAME --origin model --severity C` 후 `exam-resume PREVIOUS --out NEW --slots 2 22 --revision-request REQUEST.json`으로 연결한다. 실제 사람 의견만 `origin human`으로 기록한다. [계약·중단 후 재개](../../../docs/PRODUCTION.md#원-검토본을-보존한-수정-요청)를 확인하고 원본에 `feedback`을 쓰는 경로와 구분한다.
+
 `blind`는 현재 ChatGPT 로그인으로 `codex exec`를 실행한다. API 키를 사용하지 않는다. 임시 작업 폴더와 새 대화에 수험생용 내용만 전달하고, 도구 사용이 감지되면 독립 검토 결과로 채택하지 않는다. 이용 중인 Codex의 사용량 한도는 적용된다.
 
 Python 의존성이 없으면 저장소 루트에서 `./haean setup`을 실행한다. 모델 선택·권한·로그인 설정은 사용자의 Codex 설정을 따른다. 로그인하지 않은 경우 `codex login`을 안내한다.

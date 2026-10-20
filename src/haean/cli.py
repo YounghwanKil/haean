@@ -138,6 +138,16 @@ def main():
     p.add_argument("folder", type=Path)
     p = sub.add_parser("exam-status", help="모델 호출 없이 회차의 저장된 진행 단계와 오류 조회")
     p.add_argument("folder", type=Path)
+    p = sub.add_parser("exam-revision-request", help="원 검토본을 보존하고 번호·버전에 연결한 수정 요청 저장; 모델 호출 없음")
+    p.add_argument("folder", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--slots", type=int, nargs="+", required=True, metavar="NUMBER")
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--text")
+    source.add_argument("--file", type=Path, help="검토한 수정 의견의 UTF-8 텍스트 파일")
+    p.add_argument("--reviewer", required=True)
+    p.add_argument("--origin", choices=["human", "model", "unknown"], required=True)
+    p.add_argument("--severity", choices=["A", "B", "C"], default="C")
     p = sub.add_parser("exam-resume", help="기존 이력을 보존하고 미완료 묶음만 새 실행에서 재개")
     p.add_argument("folder", type=Path)
     p.add_argument("--out", type=Path, required=True)
@@ -149,6 +159,8 @@ def main():
                    help="이번 재개 호출에만 적용; 부모 실행 옵션을 자동 상속하지 않음")
     p.add_argument("--slots", type=int, nargs="+", metavar="NUMBER",
                    help="지정 번호가 속한 미완료 묶음만 재개; 기존 묶음의 모든 번호를 지정")
+    p.add_argument("--revision-request", type=Path, action="append", default=[],
+                   help="명시 수정 요청 JSON; --slots 필수, 등급과 별개로 새 수정부터 시작")
     p = sub.add_parser("evaluate", help="고정 과제에서 Astra 출제·검토·평가 실행")
     p.add_argument("--suite", type=Path, default=Path("evals/pilot.json"))
     p.add_argument("--out", type=Path, required=True)
@@ -282,6 +294,11 @@ def dispatch(a):
     if a.command == 'exam-status':
         from .production_status import production_status
         return production_status(a.folder)
+    if a.command == 'exam-revision-request':
+        from .revision_request import create_request
+        text = a.file.read_text(encoding='utf-8') if a.file is not None else a.text
+        return create_request(a.folder, a.out, slots=a.slots, text=text,
+                              reviewer=a.reviewer, origin=a.origin, severity=a.severity)
     if a.command == "wiki":
         from . import wiki
         if a.operation == "put":
@@ -295,6 +312,7 @@ def dispatch(a):
         from .exam_resume import resume
         return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement,
                       **({'slots': a.slots} if a.slots is not None else {}),
+                      **({'revision_requests': a.revision_request} if a.revision_request else {}),
                       **({'compact_reference_audit': True} if a.compact_reference_audit else {}))
     if a.command == 'exam-ref-bind':
         from .exam_references import bind_exam_references

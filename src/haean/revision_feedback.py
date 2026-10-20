@@ -21,8 +21,9 @@ def _draft_sha(seed):
 def requires_revision(packet):
     """C opinions are useful editorial context, not an automatic rewrite."""
     return bool(packet and packet.get("application") == "pending_revision"
-                and any(record["entry"]["severity"] in {"A", "B"}
-                               for record in packet["records"]))
+                and (packet.get("intent") == "request_revision"
+                     or any(record["entry"]["severity"] in {"A", "B"}
+                            for record in packet["records"])))
 
 
 def _inherited(run):
@@ -142,7 +143,7 @@ def validate_revision_feedback(packet, seed):
     """Verify a copied packet against its immutable source and selected seed."""
     if packet is None:
         return
-    if (not isinstance(packet, dict) or packet.get("schema_version") != 1
+    if (not isinstance(packet, dict) or packet.get("schema_version") not in {1, 2}
             or not isinstance(packet.get("run"), str) or not packet.get("records")
             or packet.get("application") not in {"pending_revision", "historical_review"}):
         raise ValueError("후속 의견 패킷 형식 오류")
@@ -161,9 +162,41 @@ def validate_revision_feedback(packet, seed):
         return
     if seed is None or packet.get("seed_content_sha256") != _draft_sha(seed):
         raise ValueError("재개 seed와 후속 의견 candidate 내용 불일치")
+    if packet["schema_version"] == 2:
+        current = requested_feedback(packet["run"], seed, packet.get("request"))
+        if current != packet:
+            raise ValueError("수정 요청 또는 함께 전달한 후속 의견 원문·해시 불일치")
+        return
     # This also checks item IDs, subject, text and provenance. A packet with
     # selected records always resolves directly, never through inherited data.
     source = Path(packet["run"]).resolve()
     current = load_revision_feedback(source, seed, _inherit=False)
     if current != packet:
         raise ValueError("후속 의견 원문·위치·해시 변경 또는 연결 불일치")
+
+
+def requested_feedback(run, seed, request):
+    """Combine an explicit request and all matching local opinions losslessly."""
+    from .revision_request import load_request
+    if not isinstance(request, dict) or not isinstance(request.get("path"), str):
+        raise ValueError("수정 요청 원본 연결 누락")
+    current = load_request(request["path"])
+    if current != request:
+        raise ValueError("수정 요청 파일 원문·해시 변경")
+    run = Path(run).resolve()
+    packet = current["packet"]
+    bundle = next((row for row in packet["bundles"] if row["run"] == str(run)), None)
+    if bundle is None:
+        raise ValueError("수정 요청에 없는 run")
+    candidate = Draft.model_validate_json((run / "candidate.json").read_bytes())
+    if seed is None or _draft_sha(seed) != _draft_sha(candidate):
+        raise ValueError("수정 요청과 재개 seed 내용 불일치")
+    local = load_revision_feedback(run, seed, _inherit=False)
+    entry = {key: packet[key] for key in ("intent", "text", "reviewer", "origin", "severity", "expert_verified")}
+    entry.update(item_ids=bundle["ids"], slots=bundle["slots"])
+    records = [*(local["records"] if local is not None else []),
+               {"source": "explicit_revision_request", "entry": entry}]
+    return {"schema_version": 2, "application": "pending_revision", "intent": "request_revision",
+        "run": str(run), "candidate": bundle["candidate"], "brief": bundle["brief"],
+        "seed_content_sha256": _draft_sha(seed), "request": current,
+        "local_feedback": local, "records": records, "expert_verified": False}

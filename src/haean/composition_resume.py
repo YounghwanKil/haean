@@ -13,7 +13,9 @@ from .corpus import Corpus
 from .full_exam import assemble, brief_difficulty, load_plan
 from .models import Brief, Draft, BlindReview, EditorialReview
 from .pipeline import prepare, run_pipeline, save, writer_prompt
-from .revision_feedback import load_revision_feedback, requires_revision
+from .revision_feedback import (load_revision_feedback, requires_revision, requested_feedback,
+                                validate_revision_feedback)
+from .revision_request import bind_requests
 from .resume_selection import selected_slots, deferred_job, manifest_complete
 
 
@@ -209,7 +211,7 @@ def preflight(previous):
 
 
 def resume_composition(previous, db, out, *, workers, max_revisions, model, replacements=(),
-                       compact_reference_audit=False, slots=None):
+                       compact_reference_audit=False, slots=None, revision_requests=()):
     if type(compact_reference_audit) is not bool:
         raise ValueError("compact_reference_audit must be bool")
     if replacements:
@@ -217,6 +219,17 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
     original_inputs = preflight(previous)
     plan, plan_bytes, declaration, entries = original_inputs
     requested = selected_slots(plan, [entry['job'] for entry in entries], slots)
+    request_bindings = bind_requests(previous, requested, revision_requests)
+    # Work on a separate view; the original preflight result remains the comparison baseline.
+    entries = [dict(entry) for entry in entries]
+    for entry in entries:
+        request = request_bindings.get(str(entry['run']))
+        if request is not None:
+            seed, review, lineage = _seed(entry['run'], entry['job']['composition'],
+                entry['context'], entry['group'], entry['state'])
+            feedback = requested_feedback(entry['run'], seed, request)
+            lineage['revision_feedback'] = feedback
+            entry.update(ready=False, seed=seed, review=review, lineage=lineage, revision_feedback=feedback)
     out, previous = Path(out).resolve(), Path(previous).resolve()
     if out.exists():
         raise ValueError("새 재개 출력 경로가 필요합니다. 기존 기록을 보존합니다")
@@ -228,6 +241,7 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
          "plan_sha256": declaration["plan_sha256"], "harness": harness_fingerprint(),
          "max_revisions": max_revisions, "humanizer": "not_applied", "expert_verified": False,
          **({'selected_slots': sorted(requested)} if requested is not None else {}),
+         "revision_requests": list(request_bindings.values()),
          "compact_reference_audit": compact_reference_audit})
     jobs, seeds = [], {}
     corpus = Corpus(db) if any(not entry["ready"] and
@@ -274,6 +288,8 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
     def verify_parent():
         # Preparation and model execution can be long. Recheck the original
         # candidate/seed/review lineage, not just the newly attached sidecar.
+        if bind_requests(previous, requested, revision_requests) != request_bindings:
+            raise ValueError("composition 재개 중 수정 요청 변경")
         if preflight(previous) != original_inputs:
             raise ValueError("composition 재개 중 원본 입력·검토 변경")
 
@@ -296,8 +312,9 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
             if compact_reference_audit:
                 callbacks["compact_reference_audit"] = True
             verify_parent()
-            provider = CodexProvider(model, max_calls=4 + 3 * max_revisions, timeout=1200, trace_dir=run / "codex-traces")
             seed, review, revision_feedback = seeds[str(run)]
+            validate_revision_feedback(revision_feedback, seed)
+            provider = CodexProvider(model, max_calls=4 + 3 * max_revisions, timeout=1200, trace_dir=run / "codex-traces")
             run_pipeline(run, provider, max_revisions, initial_draft=seed, initial_review=review,
                          revision_feedback=revision_feedback, **callbacks)
             state = _read(run / "status.json")

@@ -9,7 +9,9 @@ from .corpus import Corpus
 from .full_exam import assemble, load_plan, brief_difficulty
 from .models import Brief, Draft
 from .pipeline import prepare, run_pipeline, save
-from .revision_feedback import load_revision_feedback, requires_revision
+from .revision_feedback import (load_revision_feedback, requires_revision, requested_feedback,
+                                validate_revision_feedback)
+from .revision_request import bind_requests
 from .resume_selection import selected_slots, deferred_job, manifest_complete
 
 
@@ -104,13 +106,15 @@ def _parent_snapshot(parent):
 
 
 def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', replacements=(), *,
-           compact_reference_audit=False, slots=None):
+           compact_reference_audit=False, slots=None, revision_requests=()):
     if type(compact_reference_audit) is not bool:
         raise ValueError('compact_reference_audit must be bool')
     if not 1 <= workers <= 3 or not 0 <= max_revisions <= 3:
         raise ValueError('workers 1–3, max_revisions 0–3 범위를 사용하세요')
     if slots is not None and replacements:
         raise ValueError('slots 선택과 replacements 대체 묶음은 함께 사용할 수 없습니다')
+    if revision_requests and (slots is None or replacements):
+        raise ValueError('revision_requests에는 slots가 필요하며 replacements와 함께 사용할 수 없습니다')
     previous, out = Path(previous).resolve(), Path(out).resolve()
     production = read(previous / 'production.json')
     if ('composition' in production or any('composition' in job or
@@ -119,6 +123,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
         from .composition_resume import resume_composition
         return resume_composition(previous, db, out, workers=workers, max_revisions=max_revisions,
                                   model=model, replacements=replacements,
+                                  revision_requests=revision_requests,
                                   **({'slots': slots} if slots is not None else {}),
                                   **({'compact_reference_audit': True} if compact_reference_audit else {}))
     for replacement in replacements:
@@ -130,6 +135,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
     plan = load_plan(previous / 'plan.json')
     selected = production['jobs'] if slots is not None else select_jobs(previous, replacements)
     requested = selected_slots(plan, selected, slots)
+    request_bindings = bind_requests(previous, requested, revision_requests)
     slot_map = {s['id']: s for s in plan['slots']}
     ids = [i for job in selected for i in job['ids']]
     if len(ids) != len(set(ids)) or set(ids) != set(slot_map):
@@ -153,6 +159,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
         'humanizer': 'not_applied', 'expert_verified': False,
         **({'selected_slots': sorted(requested), 'parent_input_sha256': parent_snapshots,
             'parent_exam_sha256': exam_snapshot} if requested is not None else {}),
+        'revision_requests': list(request_bindings.values()),
         'compact_reference_audit': compact_reference_audit})
     jobs, seeds = [], {}
     corpus = None
@@ -171,7 +178,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                 raise ValueError('기존 검토 해시 불일치: ' + str(parent))
             if [i.id for i in Draft.model_validate_json(candidate.read_text()).items] != source['ids']:
                 raise ValueError('기존 후보의 ID·순서 불일치')
-            revision_feedback = load_revision_feedback(parent, read(candidate))
+            revision_feedback = (requested_feedback(parent, read(candidate), request_bindings[str(parent)])
+                if str(parent) in request_bindings else load_revision_feedback(parent, read(candidate)))
             if not requires_revision(revision_feedback):
                 job = {**source, 'bundle': len(jobs)+1, 'state': state['state'], 'reused': True}
                 job.pop('pending_revision_feedback', None)
@@ -179,7 +187,8 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                 jobs.append(job)
                 continue
         seed, review, seed_path = seed_from(parent)
-        revision_feedback = load_revision_feedback(parent, seed)
+        revision_feedback = (requested_feedback(parent, seed, request_bindings[str(parent)])
+            if str(parent) in request_bindings else load_revision_feedback(parent, seed))
         original_group = [slot_map[i] for i in source['ids']]
         # Never split an existing draft or a shared passage pair.
         groups = [original_group] if requested is not None or seed or any(s.get('shared_passage_id') for s in original_group) else [original_group[i:i+2] for i in range(0, len(original_group), 2)]
@@ -234,6 +243,9 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
             if requested is not None and any(sha(Path(path)) != digest for path, digest in exam_snapshot.items()):
                 raise ValueError('재개 중 원 회차 배정 변경')
             seed, review, revision_feedback = seeds[str(run)]
+            if bind_requests(previous, requested, revision_requests) != request_bindings:
+                raise ValueError('재개 중 수정 요청 변경')
+            validate_revision_feedback(revision_feedback, seed)
             # Preserve the selected seed even if provider construction fails
             # before run_pipeline has a chance to save its inherited inputs.
             if seed is not None:
