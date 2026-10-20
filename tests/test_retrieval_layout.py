@@ -124,6 +124,49 @@ def test_page_and_column_start_cannot_conflict(tmp_path, draft, brief):
     assert not (tmp_path/'out.template.json').exists()
 
 
+@pytest.mark.parametrize('placement,preserve', [('passage',True), ('statements',True), ('option_1',False), (None,False)])
+def test_continuous_preserves_shared_figure_boundary(tmp_path, draft, brief, monkeypatch, placement, preserve):
+    """Check emitted operations: a later F must not erase the X column boundary."""
+    from haean.models import Figure
+    from haean import figures
+    draft.items[0].shared_passage_id='PAIR'
+    second=draft.items[0].model_copy(deep=True);second.id='TEST-002'
+    second.statements=['ㄱ. 자료를 비교한다.']
+    if placement:
+        second.figures=[Figure.model_validate({
+            'id':'FIG-1', 'placement':placement, 'kind':'bar', 'title':'합성 그림',
+            'categories':['A'], 'series':[{'name':'값','values':[1]}],
+            'x_label':'', 'y_label':'', 'nodes':[], 'edges':[], 'note':'',
+        })]
+    draft.items.append(second)
+    (tmp_path/'candidate.json').write_text(draft.model_dump_json())
+    (tmp_path/'brief.json').write_text(brief.model_dump_json())
+    template=tmp_path/'template.hwp';template.write_bytes(b'synthetic template')
+    original=(tmp_path/'candidate.json').read_bytes()
+    styles=['문제','박스내용(들여쓰기)','보기내용(내어쓰기)','선택지','표-가운데','<사례견해>']
+    def fake_execute(*args):
+        out=Path(args[args.index('-o')+1])
+        if '--to' in args:
+            out.write_text(json.dumps({'header':{'styles':[{'name':s} for s in styles]}}))
+        else:
+            out.write_text('\n'.join(v for i in draft.items for v in [i.stem,i.passage,*i.statements,*[o.text for o in i.options]]))
+    def fake_java(name, template, spec, output):
+        output.write_bytes(b'synthetic output')
+    monkeypatch.setattr(hwp,'execute',fake_execute)
+    monkeypatch.setattr(hwp,'java_tool',fake_java)
+    monkeypatch.setattr(figures,'render_item',lambda item, folder: {'FIG-1':tmp_path/'figure.png'})
+    monkeypatch.setattr(figures,'option_grid',lambda *args:None)
+    out=tmp_path/'out.hwp'
+    result=hwp.fill_template([tmp_path],template,out,'검토',continuous=True)
+    operations=out.with_suffix('.fill.tsv').read_text().splitlines()
+    assert ('F\t2' in operations) is not preserve
+    x=next(line for line in operations if line.startswith('X\t2\t'))
+    assert x.endswith('\tcolumn' if preserve else '\tflow')
+    assert result['shared_figure_start_slots']==([2] if preserve else [])
+    assert (tmp_path/'candidate.json').read_bytes()==original
+    assert template.read_bytes()==b'synthetic template'
+
+
 @pytest.mark.parametrize('exam_size,start,exam,count', [(25,1,'psat7',1),(25,2,'psat7',25),(25,1,'leet',25),(24,1,'psat7',24),(40,1,'leet',25)])
 def test_full_exam_size_rejects_incomplete_or_wrong_exam(tmp_path,draft,brief,exam_size,start,exam,count):
     b=brief.model_dump();b['exam']=exam

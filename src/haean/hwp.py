@@ -80,6 +80,11 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         if exam_size == 25 and briefs[0]['exam'] != 'psat7':
             raise ValueError('25문항 양식은 PSAT 7급에 사용합니다')
     shared = shared_layout(items, start) if kind == 'questions' else {}
+    shared_figure_starts = {
+        slot for slot, item in enumerate(items, start)
+        if slot in shared and not shared[slot]['first']
+        and any(f.placement in {'passage', 'statements'} for f in item.figures)
+    }
     page_starts = sorted(set(page_starts or []))
     if page_starts and (kind != 'questions' or any(n <= 1 or n < start or n >= start+len(items) for n in page_starts)):
         raise ValueError('새 쪽 시작은 출력에 포함된 2번 이후 문제에만 지정할 수 있습니다')
@@ -136,7 +141,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         else:
             op('S', slot, '문제', displayed_stem(item.stem, slot))
         if group and not group['first']:
-            op('X', slot, '박스내용(들여쓰기)', '', 'column' if any(f.placement in {'passage','statements'} for f in item.figures) else 'flow')
+            op('X', slot, '박스내용(들여쓰기)', '', 'column' if slot in shared_figure_starts else 'flow')
         else:
             op('P', slot, '박스내용(들여쓰기)', item.passage + ''.join('\n'+t.title+(' ('+t.unit+')' if t.unit else '')+('\n'+t.note if t.note else '') for t in item.tables), *(['leet-editorial'] if editorial_styles else []))
         op('B', slot, '보기내용(내어쓰기)', '\n'.join(item.statements))
@@ -158,9 +163,10 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
             grid = option_grid(item, paths, folder/'options.png')
             if grid: op('I', slot, '표-가운데', str(grid.resolve()), 'options')
     # Keep the first filled slot's template boundary. Later items may follow
-    # the preceding content; explicit page starts still take precedence.
+    # the preceding content; preserve the second shared item's own figure
+    # boundary set by X. Explicit page/column starts still take precedence.
     if continuous:
-        operations.extend('F\t'+str(n) for n in range(start+1, start+len(items)))
+        operations.extend('F\t'+str(n) for n in range(start+1, start+len(items)) if n not in shared_figure_starts)
     operations.extend('D\t'+str(n) for n in page_starts)
     operations.extend('K\t'+str(n) for n in column_starts)
     spec = output.with_suffix('.fill.tsv'); spec.write_text('\n'.join(operations)+'\n')
@@ -186,6 +192,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
               'page_start_slots': page_starts,
               'column_start_slots': column_starts,
+              'shared_figure_start_slots': sorted(shared_figure_starts),
               'item_flow': 'continuous' if continuous else 'template-columns',
               'deduplicated_stem_labels': [n for n, item in enumerate(items, start) if displayed_stem(item.stem, n) != item.stem] if kind == 'questions' else [],
               'native_page_count_verified': False,
