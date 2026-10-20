@@ -6,6 +6,17 @@ import pytest
 from haean.production_status import production_status
 
 
+def valid_review(run, draft):
+    from test_review_binding import results
+    blind, editorial = results(draft)
+    (run / 'draft-r0.json').write_text(draft.model_dump_json())
+    (run / 'review-r0.json').write_text(json.dumps({'revision': 0,
+        'blind': blind.model_dump(), 'editorial': editorial.model_dump(), 'errors': []}))
+    status = json.loads((run / 'status.json').read_text())
+    status['revision'] = 0
+    (run / 'status.json').write_text(json.dumps(status))
+
+
 def test_progress_does_not_confuse_requested_review_with_completion(tmp_path):
     runs = [tmp_path / str(n) for n in range(3)]
     jobs = []
@@ -29,13 +40,14 @@ def test_progress_does_not_confuse_requested_review_with_completion(tmp_path):
         'exam': 'psat7', 'subject': '언어논리', 'total': 3, 'jobs': jobs}))
     before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
     report = production_status(tmp_path)
-    assert report['model_reviewed_items_with_matching_hash'] == 1
+    assert report['model_reviewed_items_with_matching_hash'] == 0
+    assert report['status_claimed_reviewed_items_with_matching_hash'] == 1
     assert report['process_liveness'] == 'not_checked'
     assert report['jobs'][0]['last_requested_stage'] == '04-revise'
     # A prepared manifest must not hide an error while its revision is running.
     assert report['jobs'][0]['last_saved_review']['errors'] == ['정의 조건 누락']
     assert report['jobs'][0]['reviewed_candidate_hash_matches'] is False
-    assert '해시 불일치' in report['warnings'][0]
+    assert any('해시 불일치' in warning for warning in report['warnings'])
     assert before == {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
 
 
@@ -44,6 +56,7 @@ def test_progress_does_not_confuse_requested_review_with_completion(tmp_path):
 def test_pending_feedback_is_not_counted_as_ready(tmp_path, draft, brief, severity, ready, effective):
     from test_revision_feedback import original, add_feedback
     run = original(tmp_path, draft, brief)
+    valid_review(run, draft)
     add_feedback(run, draft, severity)
     # Simulate a retained source status while a version-bound opinion was
     # appended later; status must inspect the opinion, not trust that flag.
@@ -67,6 +80,7 @@ def test_pending_feedback_is_not_counted_as_ready(tmp_path, draft, brief, severi
 def test_unreadable_feedback_reports_unknown_instead_of_ready(tmp_path, draft, brief):
     from test_revision_feedback import original
     run = original(tmp_path, draft, brief)
+    valid_review(run, draft)
     (tmp_path / 'feedback.jsonl').write_text('broken feedback')
     (tmp_path / 'production.json').write_text(json.dumps({'exam': brief.exam,
         'subject': brief.subject, 'total': 1, 'jobs': [{'bundle': 1, 'slots': [1],
@@ -82,6 +96,7 @@ def test_unreadable_feedback_reports_unknown_instead_of_ready(tmp_path, draft, b
 def test_stale_feedback_does_not_block_current_candidate(tmp_path, draft, brief):
     from test_revision_feedback import original, add_feedback
     run = original(tmp_path, draft, brief)
+    valid_review(run, draft)
     add_feedback(run, draft)
     changed = draft.model_copy(deep=True)
     changed.items[0].explanation += ' 합성 수정본'
@@ -89,6 +104,7 @@ def test_stale_feedback_does_not_block_current_candidate(tmp_path, draft, brief)
     candidate.write_text(changed.model_dump_json())
     (run / 'status.json').write_text(json.dumps({'state': 'awaiting_human_review',
         'candidate_sha256': hashlib.sha256(candidate.read_bytes()).hexdigest()}))
+    valid_review(run, changed)
     (tmp_path / 'production.json').write_text(json.dumps({'exam': brief.exam,
         'subject': brief.subject, 'total': 1, 'jobs': [{'bundle': 1, 'slots': [1],
         'run': str(run), 'state': 'awaiting_human_review'}]}))

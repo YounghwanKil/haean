@@ -432,6 +432,7 @@ def dispatch(a):
             preserve_review_files(a.run, ["manual-review.json"])
             save(a.run / "manual-review.json", {"blind": blind.model_dump(), "editorial": editorial.model_dump(),
                  "errors": errors, "candidate_sha256": a.candidate_sha,
+                 "source_paths": {"blind": str(a.blind.resolve()), "editorial": str(a.editorial.resolve())},
                  "evidence": {"blind": blind_evidence, "editorial": editorial_evidence}})
             state = "needs_revision" if errors else "awaiting_human_review"
         save(a.run / "status.json", {"state": state, "human_approved": False, "errors": errors,
