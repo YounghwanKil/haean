@@ -10,6 +10,7 @@ from .full_exam import assemble, load_plan, brief_difficulty
 from .models import Brief, Draft
 from .pipeline import prepare, run_pipeline, save
 from .revision_feedback import load_revision_feedback, requires_revision
+from .resume_selection import selected_slots, deferred_job, manifest_complete
 
 
 def read(path):
@@ -57,12 +58,59 @@ def seed_from(run):
     return read(path), read(review) if review.exists() else None, path
 
 
+def _selection_preflight(jobs, slot_map):
+    """Check every preserved or selected input before a selective output exists."""
+    from .authoring_sources import supplied_source_ids
+    entries, snapshots = {}, {}
+    for source in jobs:
+        parent = Path(source['run']).resolve()
+        context, state = read(parent / 'context.json'), read(parent / 'status.json')
+        supplied_source_ids(context)
+        if state.get('state') not in {'prepared', 'failed', 'needs_revision', 'awaiting_human_review'}:
+            raise ValueError('재개 상태 불일치')
+        group = [slot_map[item_id] for item_id in source['ids']]
+        if 'exam_assignment' in context and context['exam_assignment'] != group:
+            raise ValueError('기존 context의 배정 ID·번호·내용 불일치')
+        candidate_path = parent / 'candidate.json'
+        ready = state['state'] == 'awaiting_human_review'
+        candidate = None
+        if candidate_path.exists():
+            candidate = Draft.model_validate_json(candidate_path.read_text())
+            if [item.id for item in candidate.items] != source['ids']:
+                raise ValueError('기존 후보의 ID·순서 불일치')
+            if ((ready or state['state'] == 'needs_revision' or state.get('candidate_sha256'))
+                    and state.get('candidate_sha256') != sha(candidate_path)):
+                raise ValueError('기존 검토 해시 불일치: ' + str(parent))
+        elif ready:
+            raise ValueError('기존 검토 후보 누락: ' + str(parent))
+        revision_feedback = load_revision_feedback(parent, candidate) if ready else None
+        ready = ready and not requires_revision(revision_feedback)
+        seed, review, seed_path = (None, None, None) if ready else seed_from(parent)
+        if seed is not None and [item.id for item in Draft.model_validate(seed).items] != source['ids']:
+            raise ValueError('기존 초안의 ID·순서 불일치')
+        if not ready:
+            revision_feedback = load_revision_feedback(parent, seed)
+        entries[str(parent)] = (context, state, ready, seed, review, seed_path, revision_feedback)
+        snapshots[str(parent)] = _parent_snapshot(parent)
+    return entries, snapshots
+
+
+def _parent_snapshot(parent):
+    paths = list(parent.glob('*.json'))
+    feedback_path = parent.parent / 'feedback.jsonl'
+    if feedback_path.exists():
+        paths.append(feedback_path)
+    return {str(path): sha(path) for path in paths}
+
+
 def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', replacements=(), *,
-           compact_reference_audit=False):
+           compact_reference_audit=False, slots=None):
     if type(compact_reference_audit) is not bool:
         raise ValueError('compact_reference_audit must be bool')
     if not 1 <= workers <= 3 or not 0 <= max_revisions <= 3:
         raise ValueError('workers 1–3, max_revisions 0–3 범위를 사용하세요')
+    if slots is not None and replacements:
+        raise ValueError('slots 선택과 replacements 대체 묶음은 함께 사용할 수 없습니다')
     previous, out = Path(previous).resolve(), Path(out).resolve()
     production = read(previous / 'production.json')
     if ('composition' in production or any('composition' in job or
@@ -71,6 +119,7 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
         from .composition_resume import resume_composition
         return resume_composition(previous, db, out, workers=workers, max_revisions=max_revisions,
                                   model=model, replacements=replacements,
+                                  **({'slots': slots} if slots is not None else {}),
                                   **({'compact_reference_audit': True} if compact_reference_audit else {}))
     for replacement in replacements:
         replacement_production = read(replacement)
@@ -79,28 +128,41 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                 (Path(job['run']) / 'composition-binding.json').exists() for job in replacement_production['jobs'])):
             raise ValueError('composition 묶음은 기존 회차 재개의 대체 묶음으로 사용할 수 없습니다')
     plan = load_plan(previous / 'plan.json')
-    selected = select_jobs(previous, replacements)
+    selected = production['jobs'] if slots is not None else select_jobs(previous, replacements)
+    requested = selected_slots(plan, selected, slots)
     slot_map = {s['id']: s for s in plan['slots']}
     ids = [i for job in selected for i in job['ids']]
     if len(ids) != len(set(ids)) or set(ids) != set(slot_map):
         raise ValueError('재개 배정의 ID 중복·누락')
     from .authoring_sources import supplied_source_ids
     supplied_source_ids({'references': [], 'exam_assignment': [slot_map[i] for i in ids]})
+    entries, parent_snapshots = _selection_preflight(selected, slot_map) if requested is not None else ({}, {})
+    exam_snapshot = {str(previous / name): sha(previous / name) for name in ('plan.json', 'production.json')}
     if out.exists():
         raise ValueError('새 재개 출력 경로가 필요합니다. 기존 기록을 보존합니다')
     out.mkdir(parents=True)
-    save(out / 'plan.json', plan)
+    if requested is None:
+        save(out / 'plan.json', plan)
+    else:
+        (out / 'plan.json').write_bytes((previous / 'plan.json').read_bytes())
     from .evaluation import harness_fingerprint
     save(out / 'provenance.json', {'mode': 'resumed-production', 'model': model,
         'parent': str(previous), 'parent_manifest_sha256': sha(previous / 'production.json'),
         'replacement_manifests': [{'path': str(Path(p).resolve()), 'sha256': sha(p)} for p in replacements],
         'harness': harness_fingerprint(), 'max_revisions': max_revisions,
         'humanizer': 'not_applied', 'expert_verified': False,
+        **({'selected_slots': sorted(requested), 'parent_input_sha256': parent_snapshots,
+            'parent_exam_sha256': exam_snapshot} if requested is not None else {}),
         'compact_reference_audit': compact_reference_audit})
     jobs, seeds = [], {}
-    corpus = Corpus(db)
+    corpus = None
     for source in selected:
         parent = Path(source['run']).resolve()
+        if requested is not None:
+            old_context, state, ready, seed, review, seed_path, revision_feedback = entries[str(parent)]
+            if not requested.intersection(source['slots']):
+                jobs.append(deferred_job(source, state, revision_feedback, len(jobs) + 1))
+                continue
         supplied_source_ids(read(parent / 'context.json'))
         state = read(parent / 'status.json')
         candidate = parent / 'candidate.json'
@@ -111,18 +173,23 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
                 raise ValueError('기존 후보의 ID·순서 불일치')
             revision_feedback = load_revision_feedback(parent, read(candidate))
             if not requires_revision(revision_feedback):
-                jobs.append({**source, 'bundle': len(jobs)+1, 'state': state['state'], 'reused': True})
+                job = {**source, 'bundle': len(jobs)+1, 'state': state['state'], 'reused': True}
+                job.pop('pending_revision_feedback', None)
+                job.pop('deferred', None)
+                jobs.append(job)
                 continue
         seed, review, seed_path = seed_from(parent)
         revision_feedback = load_revision_feedback(parent, seed)
         original_group = [slot_map[i] for i in source['ids']]
         # Never split an existing draft or a shared passage pair.
-        groups = [original_group] if seed or any(s.get('shared_passage_id') for s in original_group) else [original_group[i:i+2] for i in range(0, len(original_group), 2)]
+        groups = [original_group] if requested is not None or seed or any(s.get('shared_passage_id') for s in original_group) else [original_group[i:i+2] for i in range(0, len(original_group), 2)]
         for group in groups:
             brief = Brief(exam=plan['exam'], subject=plan['subject'], item_type=group[0]['item_type'],
                 topic=' / '.join(s['topic'] for s in group), count=len(group),
                 difficulty=brief_difficulty(group),
                 shared_passage=bool(group[0].get('shared_passage_id')))
+            if corpus is None:
+                corpus = Corpus(db)
             run = prepare(corpus, brief, out / 'bundles')
             context = read(run / 'context.json')
             old_context = read(parent / 'context.json')
@@ -154,12 +221,18 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
             jobs.append(job)
             seeds[str(run)] = (seed, review, revision_feedback)
     manifest = {'exam': plan['exam'], 'subject': plan['subject'], 'total': len(plan['slots']),
-        'jobs': jobs, 'complete': False, 'human_approved': False, 'parent': str(previous)}
+        'jobs': jobs, 'complete': False, 'human_approved': False, 'parent': str(previous),
+        **({'selected_slots': sorted(requested)} if requested is not None else {})}
     save(out / 'production.json', manifest)
 
     def work(job):
         run = Path(job['run'])
         try:
+            if requested is not None and any(_parent_snapshot(Path(parent)) != snapshot
+                                             for parent, snapshot in parent_snapshots.items()):
+                raise ValueError('재개 중 원본 입력·검토 변경')
+            if requested is not None and any(sha(Path(path)) != digest for path, digest in exam_snapshot.items()):
+                raise ValueError('재개 중 원 회차 배정 변경')
             seed, review, revision_feedback = seeds[str(run)]
             # Preserve the selected seed even if provider construction fails
             # before run_pipeline has a chance to save its inherited inputs.
@@ -185,6 +258,6 @@ def resume(previous, db, out, workers=3, max_revisions=2, model='gpt-6-astra', r
             index = pending[future]
             manifest['jobs'][index] = future.result()
             save(out / 'production.json', manifest)
-    manifest['complete'] = all(j['state'] == 'awaiting_human_review' for j in manifest['jobs'])
+    manifest['complete'] = manifest_complete(manifest['jobs'])
     save(out / 'production.json', manifest)
     return assemble(out)

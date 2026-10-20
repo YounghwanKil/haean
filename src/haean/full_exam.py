@@ -186,7 +186,7 @@ def assemble(out):
         if was_composition:
             return unready(f'composition production 입력을 읽을 수 없습니다: {exc}')
         raise
-    lookup, errors = {}, []
+    lookup, errors, pending_feedback = {}, [], {}
     composition_declared = 'composition' in production
     if composition_declared:
         unready('composition 조립 입력 재검증 중', production)
@@ -232,6 +232,15 @@ def assemble(out):
             errors.append(f"검토 버전 해시 불일치 묶음 {job['bundle']}")
         if [item.id for item in draft.items] != job['ids']:
             errors.append(f"배정 ID·순서 불일치 묶음 {job['bundle']}")
+        # Post-review A/B opinions can exist without changing a saved status.
+        # Preserve that historical review and mark only the new assembly view.
+        from .revision_feedback import load_revision_feedback, requires_revision
+        try:
+            packet = load_revision_feedback(run, draft)
+            if requires_revision(packet):
+                pending_feedback[str(run)] = packet
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            errors.append(f"후속 의견 확인 실패 묶음 {job['bundle']}: {exc}")
         for item in draft.items:
             if item.id in lookup: errors.append('문항 ID 중복: '+item.id)
             lookup[item.id] = (item, run)
@@ -240,6 +249,9 @@ def assemble(out):
         if slot['id'] not in lookup: errors.append(f"미작성 {slot['number']}번"); continue
         item, parent = lookup[slot['id']]
         source_state = json.loads((parent/'status.json').read_text())
+        if str(parent) in pending_feedback:
+            source_state = {**source_state, 'parent_state': source_state['state'],
+                            'state': 'needs_revision', 'pending_revision_feedback': pending_feedback[str(parent)]}
         if source_state['state'] != 'awaiting_human_review': errors.append(f"재검토 필요 {slot['number']}번")
         errors.extend(check_slot(slot, item, plan['subject']))
         items.append({'number': slot['number'], **item.model_dump()})
@@ -274,6 +286,9 @@ def assemble(out):
         'composition_observations': composition_observations(plan, items),
         'ready_for_human_review': len(items) == len(plan['slots']) and not errors,
         'human_approved': False, 'layout_verified': False, 'delivery_ready': False}
+    if errors:
+        production['complete'] = False
+        save(out/'production.json', production)
     if composition_declared:
         from .composition_adapter import LIMITS
         result['external_composition'] = {'inputs': production['composition'],

@@ -147,6 +147,8 @@ def main():
     p.add_argument("--model", default="gpt-6-astra")
     p.add_argument("--compact-reference-audit", action="store_true",
                    help="이번 재개 호출에만 적용; 부모 실행 옵션을 자동 상속하지 않음")
+    p.add_argument("--slots", type=int, nargs="+", metavar="NUMBER",
+                   help="지정 번호가 속한 미완료 묶음만 재개; 기존 묶음의 모든 번호를 지정")
     p = sub.add_parser("evaluate", help="고정 과제에서 Astra 출제·검토·평가 실행")
     p.add_argument("--suite", type=Path, default=Path("evals/pilot.json"))
     p.add_argument("--out", type=Path, required=True)
@@ -292,6 +294,7 @@ def dispatch(a):
     if a.command == 'exam-resume':
         from .exam_resume import resume
         return resume(a.folder, a.db, a.out, a.workers, a.max_revisions, a.model, a.replacement,
+                      **({'slots': a.slots} if a.slots is not None else {}),
                       **({'compact_reference_audit': True} if a.compact_reference_audit else {}))
     if a.command == 'exam-ref-bind':
         from .exam_references import bind_exam_references

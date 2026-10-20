@@ -14,6 +14,7 @@ from .full_exam import assemble, brief_difficulty, load_plan
 from .models import Brief, Draft, BlindReview, EditorialReview
 from .pipeline import prepare, run_pipeline, save, writer_prompt
 from .revision_feedback import load_revision_feedback, requires_revision
+from .resume_selection import selected_slots, deferred_job, manifest_complete
 
 
 def _read(path):
@@ -208,13 +209,14 @@ def preflight(previous):
 
 
 def resume_composition(previous, db, out, *, workers, max_revisions, model, replacements=(),
-                       compact_reference_audit=False):
+                       compact_reference_audit=False, slots=None):
     if type(compact_reference_audit) is not bool:
         raise ValueError("compact_reference_audit must be bool")
     if replacements:
         raise ValueError("composition 재개는 대체 묶음 replacements를 지원하지 않습니다")
     original_inputs = preflight(previous)
     plan, plan_bytes, declaration, entries = original_inputs
+    requested = selected_slots(plan, [entry['job'] for entry in entries], slots)
     out, previous = Path(out).resolve(), Path(previous).resolve()
     if out.exists():
         raise ValueError("새 재개 출력 경로가 필요합니다. 기존 기록을 보존합니다")
@@ -225,13 +227,21 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
          "parent": str(previous), "parent_manifest_sha256": adapter._sha(previous / "production.json"),
          "plan_sha256": declaration["plan_sha256"], "harness": harness_fingerprint(),
          "max_revisions": max_revisions, "humanizer": "not_applied", "expert_verified": False,
+         **({'selected_slots': sorted(requested)} if requested is not None else {}),
          "compact_reference_audit": compact_reference_audit})
     jobs, seeds = [], {}
-    corpus = Corpus(db) if any(not entry["ready"] for entry in entries) else None
+    corpus = Corpus(db) if any(not entry["ready"] and
+        (requested is None or requested.intersection(entry['job']['slots'])) for entry in entries) else None
     for entry in entries:
         source, parent, group = entry["job"], entry["run"], entry["group"]
+        if requested is not None and not requested.intersection(source['slots']):
+            jobs.append(deferred_job(source, entry['state'], entry['revision_feedback'], len(jobs) + 1))
+            continue
         if entry["ready"]:
-            jobs.append({**source, "bundle": len(jobs) + 1, "state": "awaiting_human_review", "reused": True})
+            job = {**source, "bundle": len(jobs) + 1, "state": "awaiting_human_review", "reused": True}
+            job.pop('pending_revision_feedback', None)
+            job.pop('deferred', None)
+            jobs.append(job)
             continue
         brief = Brief(exam=plan["exam"], subject=plan["subject"], item_type=group[0]["item_type"],
                       topic=" / ".join(slot["topic"] for slot in group), count=len(group),
@@ -257,7 +267,8 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
                      "state": "prepared", "parent_run": str(parent), "reused": False, "composition": expected})
         seeds[str(run)] = entry["seed"], entry["review"], entry["revision_feedback"]
     manifest = {"exam": plan["exam"], "subject": plan["subject"], "total": len(plan["slots"]), "jobs": jobs,
-                "complete": False, "human_approved": False, "parent": str(previous), "composition": declaration}
+                "complete": False, "human_approved": False, "parent": str(previous), "composition": declaration,
+                **({'selected_slots': sorted(requested)} if requested is not None else {})}
     save(out / "production.json", manifest)
 
     def verify_parent():
@@ -300,6 +311,6 @@ def resume_composition(previous, db, out, *, workers, max_revisions, model, repl
         for future in as_completed(pending):
             manifest["jobs"][pending[future]] = future.result()
             save(out / "production.json", manifest)
-    manifest["complete"] = all(job["state"] == "awaiting_human_review" for job in manifest["jobs"])
+    manifest["complete"] = manifest_complete(manifest["jobs"])
     save(out / "production.json", manifest)
     return assemble(out)
