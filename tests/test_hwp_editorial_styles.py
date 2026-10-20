@@ -44,6 +44,17 @@ public class EditorialStyleTest {
   if(f.getDocInfo().getCharShapeList().get(2).getProperty().isBold())throw new AssertionError("template mutated");
   Paragraph normal=new Paragraph();HaeanText.text(f,normal,0,0,"갑: 기본 경로",false);
   if(normal.getHeader().getStyleId()!=0)throw new AssertionError("non-LEET path changed");
+  Paragraph flowed=new Paragraph();HaeanText.text(f,flowed,0,0,"2. 이어지는 문항",false);
+  flowed.getHeader().getDivideSort().setDivideColumn(true);
+  flowed.getHeader().getDivideSort().setDividePage(true);
+  int oldShape=flowed.getHeader().getParaShapeId();
+  long oldSpace=f.getDocInfo().getParaShapeList().get(oldShape).getTopParaSpace();
+  HaeanFill.continuousHeading(f,flowed);
+  if(flowed.getHeader().getDivideSort().isDivideColumn() || flowed.getHeader().getDivideSort().isDividePage())throw new AssertionError("forced break remains");
+  if(!flowed.getText().getNormalString(0).strip().equals("2. 이어지는 문항"))throw new AssertionError("flow changed content");
+  var flowShape=f.getDocInfo().getParaShapeList().get(flowed.getHeader().getParaShapeId());
+  if(!flowShape.getProperty1().isTogetherNextPara() || flowShape.getTopParaSpace()<1400)throw new AssertionError("orphan heading or no spacing");
+  if(f.getDocInfo().getParaShapeList().get(oldShape).getTopParaSpace()!=oldSpace)throw new AssertionError("shared shape changed");
   HWPFile incomplete=new HWPFile();incomplete.getDocInfo().addNewCharShape();incomplete.getDocInfo().addNewParaShape();
   var s=incomplete.getDocInfo().addNewStyle();s.setHangulName("base");s.setCharShapeId(0);s.setParaShapeId(0);
   boolean rejected=false;
@@ -53,7 +64,7 @@ public class EditorialStyleTest {
 }
 ''')
     subprocess.run([javac, '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(tmp_path),
-                    str(root / 'tools/layout-java/HaeanText.java'), str(source)],
+                    *map(str, sorted((root / 'tools/layout-java').glob('*.java'))), str(source)],
                    check=True, capture_output=True, text=True)
     subprocess.run([java, '-cp', os.pathsep.join([str(jar), str(tmp_path)]), 'EditorialStyleTest'],
                    check=True, capture_output=True, text=True)

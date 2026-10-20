@@ -52,7 +52,13 @@ def java_tool(name, *args):
     if p.returncode: raise RuntimeError(p.stderr[-3000:])
 
 
-def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None, exam_size=None):
+def displayed_stem(stem: str, slot: int) -> str:
+    """Avoid repeating an explicit matching question label; retain source text."""
+    import re
+    return re.sub(rf'^\s*{slot}\.\s+', '', stem, count=1)
+
+
+def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None, exam_size=None, continuous=False):
     """Fill an existing 40-slot blank master. Missing slots stay explicitly pending."""
     import base64
     if kind not in {'questions', 'solutions'}: raise ValueError('지원되지 않는 양식 종류')
@@ -119,9 +125,9 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         if group and group['first']:
             a, b = group['pair']
             op('J', slot, '문제', f'[{a}~{b}] 다음 글과 자료를 읽고 물음에 답하시오.' if item.tables else f'[{a}~{b}] 다음 글을 읽고 물음에 답하시오.')
-            op('Q', slot, '문제', item.stem)
+            op('Q', slot, '문제', displayed_stem(item.stem, slot))
         else:
-            op('S', slot, '문제', item.stem)
+            op('S', slot, '문제', displayed_stem(item.stem, slot))
         if group and not group['first']:
             op('X', slot, '박스내용(들여쓰기)', '', 'column' if any(f.placement in {'passage','statements'} for f in item.figures) else 'flow')
         else:
@@ -144,6 +150,10 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
                 if figure.placement in {'passage', 'statements'}: op('I', slot, '표-가운데', str(paths[figure.id].resolve()), figure.placement)
             grid = option_grid(item, paths, folder/'options.png')
             if grid: op('I', slot, '표-가운데', str(grid.resolve()), 'options')
+    # Keep the first filled slot's template boundary. Later items may follow
+    # the preceding content; explicit page starts still take precedence.
+    if continuous:
+        operations.extend('F\t'+str(n) for n in range(start+1, start+len(items)))
     operations.extend('D\t'+str(n) for n in page_starts)
     spec = output.with_suffix('.fill.tsv'); spec.write_text('\n'.join(operations)+'\n')
     java_tool('HaeanFill' if kind == 'questions' else 'HaeanSolutions', template.resolve(), spec.resolve(), output.resolve())
@@ -167,6 +177,8 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'paragraph_style_policy': 'leet-editorial-v1' if editorial_styles else 'template-default',
               'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
               'page_start_slots': page_starts,
+              'item_flow': 'continuous' if continuous else 'template-columns',
+              'deduplicated_stem_labels': [n for n, item in enumerate(items, start) if displayed_stem(item.stem, n) != item.stem] if kind == 'questions' else [],
               'native_page_count_verified': False,
               'shared_passage_pairs': [s['pair'] for s in shared.values() if s['first']],
               'figure_count': sum(len(i.figures) for i in items), 'figures_visually_verified': False,

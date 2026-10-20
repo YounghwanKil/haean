@@ -7,6 +7,17 @@ from haean.models import Brief
 from haean.planning import blueprint
 
 
+@pytest.mark.parametrize('stem,slot,expected', [
+    ('39. 다음 글의 내용은?', 39, '다음 글의 내용은?'),
+    ('19. 위 글에 따르면?', 19, '위 글에 따르면?'),
+    ('39.5%가 증가했다면?', 39, '39.5%가 증가했다면?'),
+    ('2026. 10. 20. 시행한 실험은?', 39, '2026. 10. 20. 시행한 실험은?'),
+    ('다음 글의 내용은?', 1, '다음 글의 내용은?'),
+])
+def test_displayed_stem_removes_only_matching_label(stem, slot, expected):
+    assert hwp.displayed_stem(stem, slot) == expected
+
+
 def test_exam_scoped_source_identity():
     meta = json.dumps({'fields': {'연도': 2025, '문항 번호': 3, '과목': '자료해석', '회차': '2025 추가'}})
     assert source_item_id({'exam': 'leet', 'meta': meta}) == '2025_03'

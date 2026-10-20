@@ -27,6 +27,13 @@ public class HaeanFill {
         int id=shapes.size();shapes.add(shape);p.getHeader().setParaShapeId(id);
         file.getDocInfo().getIDMappings().setParaShapeCount(shapes.size());
     }
+    static void continuousHeading(HWPFile file,Paragraph p) {
+        p.getHeader().getDivideSort().setDivideColumn(false);
+        p.getHeader().getDivideSort().setDividePage(false);
+        keepFollowing(file,p,true);
+        var shape=file.getDocInfo().getParaShapeList().get(p.getHeader().getParaShapeId());
+        shape.setTopParaSpace(Math.max(shape.getTopParaSpace(),1400));
+    }
     static List<Paragraph> tables(Section section,int start,int end) {
         List<Paragraph> result=new ArrayList<>();
         for(int n=start;n<end;n++) {
@@ -184,6 +191,12 @@ public class HaeanFill {
                         for(var b:sd.getBatangPageInfoList())changed+=pageTotals(file,b.getParagraphList(),Integer.toString(total));
                 }
                 if(changed!=3)throw new IllegalStateException("Expected first-page and two background page totals in supplied master");
+                continue;
+            }
+            if(f[0].equals("F")) {
+                Integer index=starts.get(Integer.parseInt(f[1]));
+                if(index==null)throw new IllegalArgumentException("Missing continuous-flow slot");
+                continuousHeading(file,s.getParagraph(index));
                 continue;
             }
             if(f[0].equals("D")) {

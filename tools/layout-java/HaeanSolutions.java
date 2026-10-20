@@ -149,6 +149,11 @@ public class HaeanSolutions {
             for(int i=end-1;i>start+1;i--)s.deleteParagraph(i);
             int insert=start+2;
             for(String[] f:entry.getValue()) {
+                if(f[0].equals("F")) {
+                    HaeanFill.continuousHeading(file,heading);
+                    HaeanFill.keepFollowing(file,metadata,true);
+                    continue;
+                }
                 int style=Integer.parseInt(f[2]);String value=HaeanFill.decode(f[3]);
                 // The master's paragraph numbering supplies the question number.
                 if(f[0].equals("H")) {
