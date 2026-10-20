@@ -198,6 +198,7 @@ def main():
     p.add_argument("--kind", choices=["questions", "solutions"], default="questions")
     p.add_argument("--total-pages", type=int, help="한글 렌더에서 확인한 문제지 전체 쪽 수로 바탕쪽 분모 보정; 재렌더 확인 필요")
     p.add_argument("--page-start", type=int, action="append", default=[], help="해당 문제를 새 쪽에서 시작; 실제 배치 검토 후 지정, 반복 가능")
+    p.add_argument("--column-start", type=int, action="append", default=[], help="해당 문제를 다음 단에서 시작; 실제 배치 검토 후 지정, 반복 가능")
     p.add_argument("--exam-size", type=int, choices=[25, 40], help="전체 회차 슬롯 수; 정확한 문항 수 필요, 25는 PSAT7 전용")
     p.add_argument("--continuous", action="store_true", help="두 번째 작성 문항부터 강제 단 넘김 없이 이어 배치; 실제 한글 재검수 필요")
     p = sub.add_parser("layout-package")
@@ -357,7 +358,7 @@ def dispatch(a):
         return role_packet(a.name)
     if a.command == "layout-fill":
         from .hwp import fill_template
-        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind, a.total_pages, a.page_start, a.exam_size, a.continuous)
+        return fill_template(a.runs, a.template, a.out, a.title, a.start, a.kind, a.total_pages, a.page_start, a.exam_size, a.continuous, a.column_start)
     if a.command == "layout-package":
         from .layout import package
         return package(a.run, a.question_template, a.solution_template)

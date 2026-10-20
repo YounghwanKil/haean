@@ -55,6 +55,11 @@ public class EditorialStyleTest {
   var flowShape=f.getDocInfo().getParaShapeList().get(flowed.getHeader().getParaShapeId());
   if(!flowShape.getProperty1().isTogetherNextPara() || flowShape.getTopParaSpace()<1400)throw new AssertionError("orphan heading or no spacing");
   if(f.getDocInfo().getParaShapeList().get(oldShape).getTopParaSpace()!=oldSpace)throw new AssertionError("shared shape changed");
+  flowed.getHeader().getDivideSort().setDividePage(true);
+  HaeanFill.columnHeading(flowed);
+  if(!flowed.getHeader().getDivideSort().isDivideColumn() || flowed.getHeader().getDivideSort().isDividePage())throw new AssertionError("column break not restored");
+  if(!flowed.getText().getNormalString(0).strip().equals("2. 이어지는 문항"))throw new AssertionError("column break changed content");
+  if(!flowShape.getProperty1().isTogetherNextPara())throw new AssertionError("column break lost paragraph protection");
   HWPFile incomplete=new HWPFile();incomplete.getDocInfo().addNewCharShape();incomplete.getDocInfo().addNewParaShape();
   var s=incomplete.getDocInfo().addNewStyle();s.setHangulName("base");s.setCharShapeId(0);s.setParaShapeId(0);
   boolean rejected=false;

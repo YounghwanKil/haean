@@ -58,7 +58,7 @@ def displayed_stem(stem: str, slot: int) -> str:
     return re.sub(rf'^\s*{slot}\.\s+', '', stem, count=1)
 
 
-def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None, exam_size=None, continuous=False):
+def fill_template(runs: list[Path], template: Path, output: Path, title: str, start=1, kind="questions", total_pages=None, page_starts=None, exam_size=None, continuous=False, column_starts=None):
     """Fill an existing 40-slot blank master. Missing slots stay explicitly pending."""
     import base64
     if kind not in {'questions', 'solutions'}: raise ValueError('지원되지 않는 양식 종류')
@@ -85,6 +85,13 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
         raise ValueError('새 쪽 시작은 출력에 포함된 2번 이후 문제에만 지정할 수 있습니다')
     if any(n in shared and not shared[n]['first'] for n in page_starts):
         raise ValueError('공통지문의 두 번째 문항만 새 쪽으로 분리할 수 없습니다')
+    column_starts = sorted(set(column_starts or []))
+    if column_starts and (kind != 'questions' or any(n <= 1 or n < start or n >= start+len(items) for n in column_starts)):
+        raise ValueError('새 단 시작은 출력에 포함된 2번 이후 문제에만 지정할 수 있습니다')
+    if any(n in shared and not shared[n]['first'] for n in column_starts):
+        raise ValueError('공통지문의 두 번째 문항만 새 단으로 분리할 수 없습니다')
+    if set(page_starts) & set(column_starts):
+        raise ValueError('같은 문항에 새 쪽과 새 단 시작을 함께 지정할 수 없습니다')
     output.parent.mkdir(parents=True, exist_ok=True)
     ir = output.with_suffix('.template.json')
     execute('convert', template.resolve(), '--to', 'json', '-o', ir)
@@ -155,6 +162,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
     if continuous:
         operations.extend('F\t'+str(n) for n in range(start+1, start+len(items)))
     operations.extend('D\t'+str(n) for n in page_starts)
+    operations.extend('K\t'+str(n) for n in column_starts)
     spec = output.with_suffix('.fill.tsv'); spec.write_text('\n'.join(operations)+'\n')
     java_tool('HaeanFill' if kind == 'questions' else 'HaeanSolutions', template.resolve(), spec.resolve(), output.resolve())
     reread = output.with_suffix('.txt'); execute('convert', output, '-o', reread)
@@ -177,6 +185,7 @@ def fill_template(runs: list[Path], template: Path, output: Path, title: str, st
               'paragraph_style_policy': 'leet-editorial-v1' if editorial_styles else 'template-default',
               'printed_total_pages': total_pages if total_pages is not None else (20 if kind == 'questions' else None),
               'page_start_slots': page_starts,
+              'column_start_slots': column_starts,
               'item_flow': 'continuous' if continuous else 'template-columns',
               'deduplicated_stem_labels': [n for n, item in enumerate(items, start) if displayed_stem(item.stem, n) != item.stem] if kind == 'questions' else [],
               'native_page_count_verified': False,

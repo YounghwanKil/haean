@@ -34,6 +34,10 @@ public class HaeanFill {
         var shape=file.getDocInfo().getParaShapeList().get(p.getHeader().getParaShapeId());
         shape.setTopParaSpace(Math.max(shape.getTopParaSpace(),1400));
     }
+    static void columnHeading(Paragraph p) {
+        p.getHeader().getDivideSort().setDividePage(false);
+        p.getHeader().getDivideSort().setDivideColumn(true);
+    }
     static List<Paragraph> tables(Section section,int start,int end) {
         List<Paragraph> result=new ArrayList<>();
         for(int n=start;n<end;n++) {
@@ -204,6 +208,12 @@ public class HaeanFill {
                 if(index==null)throw new IllegalArgumentException("Missing page-start slot");
                 s.getParagraph(index).getHeader().getDivideSort().setDivideColumn(false);
                 s.getParagraph(index).getHeader().getDivideSort().setDividePage(true);
+                continue;
+            }
+            if(f[0].equals("K")) {
+                Integer index=starts.get(Integer.parseInt(f[1]));
+                if(index==null)throw new IllegalArgumentException("Missing column-start slot");
+                columnHeading(s.getParagraph(index));
                 continue;
             }
             int slot=Integer.parseInt(f[1]);int style=Integer.parseInt(f[2]);String value=decode(f[3]);

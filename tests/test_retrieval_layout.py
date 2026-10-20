@@ -94,14 +94,34 @@ def test_page_start_refuses_invalid_scope_before_export(tmp_path, draft, brief, 
     assert not (tmp_path/'out.template.json').exists()
 
 
-def test_page_start_does_not_separate_shared_second_question(tmp_path, draft, brief):
+@pytest.mark.parametrize('break_option', ['page_starts', 'column_starts'])
+def test_page_start_does_not_separate_shared_second_question(tmp_path, draft, brief, break_option):
     draft.items[0].shared_passage_id='PAIR'
     second=draft.items[0].model_copy(deep=True);second.id='TEST-002'
     draft.items.append(second)
     (tmp_path/'candidate.json').write_text(draft.model_dump_json())
     (tmp_path/'brief.json').write_text(brief.model_dump_json())
     with pytest.raises(ValueError, match='공통지문'):
-        hwp.fill_template([tmp_path],tmp_path/'template.hwp',tmp_path/'out.hwp','검토',page_starts=[2])
+        hwp.fill_template([tmp_path],tmp_path/'template.hwp',tmp_path/'out.hwp','검토',**{break_option: [2]})
+
+
+@pytest.mark.parametrize('column_start,kind', [(1,'questions'), (41,'questions'), (2,'solutions')])
+def test_column_start_refuses_invalid_scope_before_export(tmp_path, draft, brief, column_start, kind):
+    (tmp_path/'candidate.json').write_text(draft.model_dump_json())
+    (tmp_path/'brief.json').write_text(brief.model_dump_json())
+    with pytest.raises(ValueError, match='새 단 시작'):
+        hwp.fill_template([tmp_path],tmp_path/'template.hwp',tmp_path/'out.hwp','검토',kind=kind,column_starts=[column_start])
+    assert not (tmp_path/'out.template.json').exists()
+
+
+def test_page_and_column_start_cannot_conflict(tmp_path, draft, brief):
+    second=draft.items[0].model_copy(deep=True);second.id='TEST-002'
+    draft.items.append(second)
+    (tmp_path/'candidate.json').write_text(draft.model_dump_json())
+    (tmp_path/'brief.json').write_text(brief.model_dump_json())
+    with pytest.raises(ValueError, match='함께 지정'):
+        hwp.fill_template([tmp_path],tmp_path/'template.hwp',tmp_path/'out.hwp','검토',page_starts=[2],column_starts=[2])
+    assert not (tmp_path/'out.template.json').exists()
 
 
 @pytest.mark.parametrize('exam_size,start,exam,count', [(25,1,'psat7',1),(25,2,'psat7',25),(25,1,'leet',25),(24,1,'psat7',24),(40,1,'leet',25)])
