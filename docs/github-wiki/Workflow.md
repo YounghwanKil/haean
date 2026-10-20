@@ -34,6 +34,8 @@ LEET 언어이해는 아래의 별도 파일럿 범위로 지원합니다. PSAT 
 
 회차에 참고문항을 붙일 때는 원문을 읽고 슬롯별 적용 이유와 부족한 점을 정한 뒤 `haean tools exam-ref-bind PLAN --index INDEX --selection SELECTION --out NEW_DIR`를 사용합니다. 선택한 전문과 출처 사본을 새 계획에 연결하며 기존 계획과 선택은 보존합니다. 전체 슬롯의 `coverage.json`에서 연결·기존 선택·결손을 확인할 수 있습니다. 자료 연결은 유형 적합성이나 문항 품질 승인이 아닙니다. 새 계획으로 `compose bind`를 수행한 뒤 출제합니다. [선택 파일과 사용법](https://github.com/YounghwanKil/haean/blob/main/docs/EXAM_INPUTS.md#선택한-참고문항을-새-계획에-붙이기)을 확인하세요.
 
+검증 파일 목록이 큰 선택 참고자료에는 개발용 `--compact-reference-audit` 옵션을 사용할 수 있습니다. `generate`, `exam-build`, `exam-resume`에서 작성·수정·편집에 전달하는 중복 파일 목록만 보관 기록으로 연결하고 문항 전문·공식 답 상태·분류 근거·적용 범위는 유지합니다. 원 context와 출처 검증, 독립 풀이·고정 평가 입력은 그대로입니다. 기본 설정은 전체 전달이며, 재개 때도 옵션을 다시 지정합니다. 문자 수 감소를 실제 토큰 절감이나 품질 향상으로 해석하지 않습니다. [입력 축약 범위와 기록](https://github.com/YounghwanKil/haean/blob/main/docs/AUTHORING_INPUT.md)을 참고하세요.
+
 ## PSAT 검토와 언어이해 파일럿
 
 PSAT 검토는 공통 독립 풀이·편집 역할에 급수·과목별 지침을 자동 연결한다. [과목별 검토 기준](https://github.com/YounghwanKil/haean/blob/main/docs/PSAT_REVIEW.md)을 참고한다. 새 지침의 실행 결과를 이전 회차에 소급하지 않는다.
