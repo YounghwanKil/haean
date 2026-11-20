@@ -15,6 +15,15 @@ import java.util.*;
 
 /** Fill supplied HWP slots in place. Keep page furniture, boxes and named styles. */
 public class HaeanFill {
+    // Empty body paragraph created by P/B with no text; removed when ordered content is appended.
+    static final Set<Paragraph> placeholders = Collections.newSetFromMap(new IdentityHashMap<>());
+    static void append(Cell parent, Paragraph para) {
+        var list=parent.getParagraphList();
+        if(list.getParagraphCount()==1 && placeholders.remove(list.getParagraph(0)))list.deleteParagraph(0);
+        if(list.getParagraphCount()>0)list.getParagraph(list.getParagraphCount()-1).getHeader().setLastInList(false);
+        para.getHeader().setLastInList(true);list.addParagraph(para);
+        parent.getListHeader().setParaCount(list.getParagraphCount());
+    }
     static String decode(String value) { return new String(Base64.getDecoder().decode(value),StandardCharsets.UTF_8); }
     static String normal(Paragraph p) throws Exception { return p.getText()==null ? "" : p.getText().getNormalString(0); }
     static void setText(HWPFile file, Paragraph p, String value, int style) throws Exception {
@@ -72,7 +81,9 @@ public class HaeanFill {
             if(editorial)HaeanText.editorialText(file,para,style,line);
             else HaeanText.text(file,para,style,0,line,false);
         }
-        if(cell.getParagraphList().getParagraphCount()==0)HaeanText.text(file,cell.getParagraphList().addNewParagraph(),style,0,"",false);
+        if(cell.getParagraphList().getParagraphCount()==0) {
+            Paragraph blank=cell.getParagraphList().addNewParagraph();HaeanText.text(file,blank,style,0,"",false);placeholders.add(blank);
+        }
         cell.getParagraphList().getParagraph(cell.getParagraphList().getParagraphCount()-1).getHeader().setLastInList(true);
         cell.getListHeader().setParaCount(cell.getParagraphList().getParagraphCount());
         cell.getListHeader().setHeight(1558);
@@ -167,7 +178,8 @@ public class HaeanFill {
             String t=normal(s.getParagraph(i));
             if(t.matches("[0-9]+\\.첫줄발문.*")) starts.put(Integer.parseInt(t.substring(0,t.indexOf('.'))),i);
         }
-        if(starts.size()!=40)throw new IllegalStateException("Requires supplied 40-slot blank question template; refusal prevents old questions being carried forward");
+        // 40-slot supplied master, or a 25-slot master derived from it by C trimming.
+        if(starts.size()!=40 && starts.size()!=25)throw new IllegalStateException("Requires supplied 40-slot (or derived 25-slot) blank question template; refusal prevents old questions being carried forward");
         boolean trimmedExam = false;
         Set<Paragraph> remove = Collections.newSetFromMap(new IdentityHashMap<>());
         Map<Paragraph,List<Paragraph>> insertAfter = new IdentityHashMap<>();
@@ -178,9 +190,10 @@ public class HaeanFill {
         for(String line:Files.readAllLines(Path.of(args[1]),StandardCharsets.UTF_8)) {
             String[] f=line.split("\\t",-1);
             if(f[0].equals("R")) { for(Section sec:file.getBodyText().getSectionList())replaceInList(file,sec,decode(f[1]),decode(f[2]));continue; }
+            if(f[0].equals("U")) { HaeanMeta.neutral(file,decode(f[1]));continue; }
             if(f[0].equals("C")) {
                 int size=Integer.parseInt(f[1]);
-                if(size!=25 && size!=30)throw new IllegalArgumentException("Only 25/30-slot trimming supported");
+                if((size!=25 && size!=30) || size>=starts.size())throw new IllegalArgumentException("Only 25/30-slot trimming of a larger master supported");
                 for(int i=starts.get(size+1);i<s.getParagraphCount();i++)remove.add(s.getParagraph(i));
                 trimmedExam = true;
                 continue;
@@ -232,6 +245,8 @@ public class HaeanFill {
                         pictureWidth=(int)Math.min(pictureWidth,header.getWidth()-header.getLeftMargin()-header.getRightMargin());
                     }
                 }
+                // Optional sixth field: requested width (HWPUNIT), never wider than the box body.
+                if(f.length>5 && !f[5].isEmpty())pictureWidth=Math.min(pictureWidth,Integer.parseInt(f[5]));
                 Paragraph picture=HaeanImage.paragraph(file,Path.of(value),style,pictureWidth);
                 if(f[4].equals("passage") || f[4].equals("statements")) {
                     int boxIndex=f[4].equals("statements")?1:0;
@@ -241,11 +256,7 @@ public class HaeanFill {
                         insertAfter.computeIfAbsent(s.getParagraph(start),k->new ArrayList<>()).add(picture);
                         continue;
                     }
-                    ControlTable outer=(ControlTable)boxes.get(boxIndex).getControlList().get(0);
-                    Cell parent=bodyCell(outer);
-                    parent.getParagraphList().getParagraph(parent.getParagraphList().getParagraphCount()-1).getHeader().setLastInList(false);
-                    picture.getHeader().setLastInList(true);parent.getParagraphList().addParagraph(picture);
-                    parent.getListHeader().setParaCount(parent.getParagraphList().getParagraphCount());
+                    append(bodyCell((ControlTable)boxes.get(boxIndex).getControlList().get(0)),picture);
                 } else {
                     Paragraph anchor=null;
                     for(int i=start+1;i<end;i++)if(normal(s.getParagraph(i)).contains("⑤"))anchor=s.getParagraph(i);
@@ -307,6 +318,19 @@ public class HaeanFill {
                 setText(file,s.getParagraph(start),slot+". "+value,style);
                 if(slot>1) {s.getParagraph(start).getHeader().getDivideSort().setDividePage(false);s.getParagraph(start).getHeader().getDivideSort().setDivideColumn(true);}
             }
+            else if(f[0].equals("E")) {
+                // Append text after earlier box content (tables/figures), preserving source order.
+                int index=f.length>4 && f[4].equals("statements")?1:0;
+                if(remove.contains(boxes.get(index)))throw new IllegalStateException("Append requires a retained box");
+                Cell parent=bodyCell((ControlTable)boxes.get(index).getControlList().get(0));
+                for(String text:value.split("\n",-1)) {
+                    if(text.isBlank())continue;
+                    Paragraph para=new Paragraph();
+                    if(f.length>5 && f[5].equals("leet-editorial"))HaeanText.editorialText(file,para,style,text);
+                    else HaeanText.text(file,para,style,0,text,false);
+                    append(parent,para);
+                }
+            }
             else if(f[0].equals("P"))fillBox(file,boxes.get(0),value,style,slot==1,f.length>4 && f[4].equals("leet-editorial"));
             else if(f[0].equals("B")) {
                 if(value.isBlank())remove.add(boxes.get(1));
@@ -345,8 +369,33 @@ public class HaeanFill {
                 Cell prototype=grid.getRowList().get(0).getCellList().get(0).clone();
                 String[] values=value.split("\\u001f",-1);
                 int cols=Integer.parseInt(f[4]);
-                if(cols<1||values.length%cols!=0)throw new IllegalArgumentException("Invalid table dimensions");
-                int rows=values.length/cols;
+                // Optional sixth field: "rowspan,colspan" per listed cell (';'-separated) for merged header cells.
+                int[][] spans=new int[values.length][];
+                String[] spec=f.length>5 && !f[5].isEmpty()?f[5].split(";",-1):null;
+                if(spec!=null && spec.length!=values.length)throw new IllegalArgumentException("Span count must match cells");
+                for(int k=0;k<values.length;k++){
+                    if(spec==null){spans[k]=new int[]{1,1};continue;}
+                    String[] rc=spec[k].split(",");spans[k]=new int[]{Integer.parseInt(rc[0]),Integer.parseInt(rc[1])};
+                    if(spans[k][0]<1||spans[k][1]<1)throw new IllegalArgumentException("Invalid span");
+                }
+                if(cols<1||(spec==null && values.length%cols!=0))throw new IllegalArgumentException("Invalid table dimensions");
+                List<boolean[]> occupied=new ArrayList<>();List<int[]> placed=new ArrayList<>();
+                for(int k=0,r=0,c=0;k<values.length;k++){
+                    while(true){
+                        while(occupied.size()<=r)occupied.add(new boolean[cols]);
+                        if(c>=cols){r++;c=0;continue;}
+                        if(occupied.get(r)[c]){c++;continue;}
+                        break;
+                    }
+                    if(c+spans[k][1]>cols)throw new IllegalArgumentException("Cell span exceeds columns");
+                    for(int i=r;i<r+spans[k][0];i++){
+                        while(occupied.size()<=i)occupied.add(new boolean[cols]);
+                        for(int j=c;j<c+spans[k][1];j++){if(occupied.get(i)[j])throw new IllegalArgumentException("Overlapping spans");occupied.get(i)[j]=true;}
+                    }
+                    placed.add(new int[]{r,c,spans[k][0],spans[k][1]});c+=spans[k][1];
+                }
+                for(boolean[] row:occupied)for(boolean used:row)if(!used)throw new IllegalArgumentException("Ragged table: every grid position needs a cell");
+                int rows=occupied.size();
                 long width=prototype.getListHeader().getWidth()-3400;
                 grid.getHeader().getProperty().setLikeWord(true);
                 grid.getHeader().setOutterMarginBottom(0);
@@ -355,24 +404,23 @@ public class HaeanFill {
                 grid.getTable().getCellCountOfRowList().clear();grid.getTable().getZoneInfoList().clear();
                 grid.getHeader().setWidth(width);grid.getHeader().setHeight(rows*2000);
                 for(int r=0;r<rows;r++) {
-                    Row row=new Row();grid.getRowList().add(row);grid.getTable().getCellCountOfRowList().add(cols);
-                    for(int c=0;c<cols;c++) {
+                    Row row=new Row();grid.getRowList().add(row);int count=0;
+                    for(int k=0;k<placed.size();k++) {
+                        int[] at=placed.get(k);if(at[0]!=r)continue;count++;
                         Cell cell=prototype.clone();row.getCellList().add(cell);
-                        cell.getListHeader().setRowIndex(r);cell.getListHeader().setColIndex(c);
-                        cell.getListHeader().setRowSpan(1);cell.getListHeader().setColSpan(1);
-                        cell.getListHeader().setWidth(width/cols);cell.getListHeader().setHeight(2000);
-                        cell.getListHeader().setTextWidth(width/cols);
+                        cell.getListHeader().setRowIndex(at[0]);cell.getListHeader().setColIndex(at[1]);
+                        cell.getListHeader().setRowSpan(at[2]);cell.getListHeader().setColSpan(at[3]);
+                        cell.getListHeader().setWidth(width/cols*at[3]);cell.getListHeader().setHeight(2000L*at[2]);
+                        cell.getListHeader().setTextWidth(width/cols*at[3]);
                         cell.getParagraphList().deleteAllParagraphs();
                         Paragraph cp=cell.getParagraphList().addNewParagraph();
-                        HaeanText.text(file,cp,style,0,values[r*cols+c],false);
+                        HaeanText.text(file,cp,style,0,values[k],false);
                         cp.getHeader().setLastInList(true);cell.getListHeader().setParaCount(1);
                     }
+                    grid.getTable().getCellCountOfRowList().add(count);
                 }
                 holder.deleteLineSeg();holder.getHeader().setLineAlignCount(0);
-                parent.getParagraphList().getParagraph(parent.getParagraphList().getParagraphCount()-1).getHeader().setLastInList(false);
-                holder.getHeader().setLastInList(true);
-                parent.getParagraphList().addParagraph(holder);
-                parent.getListHeader().setParaCount(parent.getParagraphList().getParagraphCount());
+                append(parent,holder);
             } else throw new IllegalArgumentException("Unknown operation "+f[0]);
         }
         for(int i=s.getParagraphCount()-1;i>=0;i--) {

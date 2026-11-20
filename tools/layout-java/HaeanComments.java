@@ -9,7 +9,8 @@ import java.util.*;
 public class HaeanComments {
     static void clean(HWPFile file) throws Exception {
         for(var section:file.getBodyText().getSectionList())walk(section);
-        file.getBodyText().getMemoList().clear();
+        // A derived master was already cleaned, so its memo list may be absent.
+        if(file.getBodyText().getMemoList()!=null)file.getBodyText().getMemoList().clear();
     }
     static void walk(ParagraphListInterface list) throws Exception {
         for(var p:list) {
