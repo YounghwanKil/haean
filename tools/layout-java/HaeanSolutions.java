@@ -22,10 +22,10 @@ public class HaeanSolutions {
     static List<Cell> cells(ControlTable table) {
         List<Cell> result=new ArrayList<>();for(Row row:table.getRowList())result.addAll(row.getCellList());return result;
     }
-    static void answers(HWPFile f,ControlTable table,Map<Integer,String> answers,int style) throws Exception {
+    static void answers(HWPFile f,ControlTable table,Map<Integer,String> answers,int style,int slots) throws Exception {
         List<Cell> cells=cells(table);
         long count=0;for(Cell c:cells)if(cellText(c).matches("[1-9][0-9]?"))count++;
-        if(count!=40)throw new IllegalArgumentException("Expected 40-slot answer grid");
+        if(count!=slots)throw new IllegalArgumentException("Expected "+slots+"-slot answer grid");
         for(int i=0;i<cells.size()-1;i++) {
             String n=cellText(cells.get(i));
             if(n.matches("[1-9][0-9]?"))cell(f,cells.get(++i),answers.getOrDefault(Integer.parseInt(n),""),style);
@@ -104,11 +104,12 @@ public class HaeanSolutions {
         Section s=file.getBodyText().getSectionList().get(1);
         List<Integer> starts=new ArrayList<>();
         for(int i=0;i<s.getParagraphCount();i++)if(HaeanFill.normal(s.getParagraph(i)).equals("제재 / 주제"))starts.add(i);
-        if(starts.size()!=40)throw new IllegalArgumentException("Requires 40 blank solution slots");
+        // 40 supplied slots, or a 25-slot master derived from it (compact grids already applied).
+        if(starts.size()!=40 && starts.size()!=25)throw new IllegalArgumentException("Requires 40 (or derived 25) blank solution slots");
         Map<Integer,List<String[]>> ops=new TreeMap<>(Comparator.reverseOrder());
         Map<Integer,String> answerMap=new HashMap<>();
         int answerStyle=1;
-        int size=40;
+        int size=starts.size();
         // Keep the named style, but give answer circles a restrained 10 pt size.
         var answerStyleDef=file.getDocInfo().getStyleList().get(answerStyle);
         var answerShape=file.getDocInfo().getCharShapeList().get(answerStyleDef.getCharShapeId()).clone();
@@ -118,14 +119,15 @@ public class HaeanSolutions {
         for(String line:Files.readAllLines(Path.of(args[1]),StandardCharsets.UTF_8)) {
             String[] f=line.split("\t",-1);
             if(f[0].equals("R")) {for(Section sec:file.getBodyText().getSectionList())HaeanFill.replaceInList(file,sec,HaeanFill.decode(f[1]),HaeanFill.decode(f[2]));continue;}
-            if(f[0].equals("C")){size=Integer.parseInt(f[1]);if(size!=25 && size!=30)throw new IllegalArgumentException("Only 25/30 supported");continue;}
-            int slot=Integer.parseInt(f[1]);if(slot<1||slot>40)throw new IllegalArgumentException("Slot out of range");
+            if(f[0].equals("U")){HaeanMeta.neutral(file,HaeanFill.decode(f[1]));continue;}
+            if(f[0].equals("C")){size=Integer.parseInt(f[1]);if((size!=25 && size!=30) || size>=starts.size())throw new IllegalArgumentException("Only 25/30 trimming of a larger master supported");continue;}
+            int slot=Integer.parseInt(f[1]);if(slot<1||slot>starts.size())throw new IllegalArgumentException("Slot out of range");
             ops.computeIfAbsent(slot,k->new ArrayList<>()).add(f);
             if(f[0].equals("A"))answerMap.put(slot,HaeanFill.decode(f[3]));
         }
         ControlTable cover=(ControlTable)file.getBodyText().getSectionList().get(0).getParagraph(1).getControlList().get(0);
         ControlTable grid=(ControlTable)s.getParagraph(1).getControlList().get(0);
-        answers(file,cover,answerMap,answerStyle);answers(file,grid,answerMap,answerStyle);
+        answers(file,cover,answerMap,answerStyle,starts.size());answers(file,grid,answerMap,answerStyle,starts.size());
         for(int n=0;n<starts.size();n++) {
             ControlTable meta=(ControlTable)s.getParagraph(starts.get(n)+1).getControlList().get(0);
             List<Cell> values=cells(meta);
@@ -135,7 +137,7 @@ public class HaeanSolutions {
         // The master's sample overall commentary is not an assessment of the new exam.
         ControlTable comment=(ControlTable)s.getParagraph(2).getControlList().stream().filter(c->c instanceof ControlTable).findFirst().orElseThrow();
         for(Cell c:cells(comment))cell(file,c,"모델 검토본 · 전문가 최종 검토 전",4);
-        if(size<40) {
+        if(size<starts.size()) {
             if(answerMap.size()!=size || !answerMap.keySet().containsAll(java.util.stream.IntStream.rangeClosed(1,size).boxed().toList()))throw new IllegalArgumentException("Requires complete answers for selected size");
             compactGrid(file,cover,answerMap,answerStyle,size);compactGrid(file,grid,answerMap,answerStyle,size);
             for(int i=s.getParagraphCount()-1;i>=starts.get(size);i--)s.deleteParagraph(i);
